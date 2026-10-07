@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-07",
+  "platform": "Windows 11 x64",
+  "version": "3.1.1",
+  "setup": "codex_xiaodongge_windows_3.1.1_x64_setup_unsigned_20261007_045728_426.exe",
+  "bytes": 122518681,
+  "sha256": "791ca124ff0abad85683c869610240aefced56d7c39ebc01ab7777f0fc1124fc",
+  "signed": false,
+  "authenticodeStatus": "NotSigned",
+  "certificateSigningExercised": false,
+  "signingBlocker": "Publisher Windows code-signing certificate has not been supplied.",
+  "defaultSigningGuard": "passed",
+  "appId": "xiaodongge.windows",
+  "userDataIdentity": "xiaodongge-windows",
+  "compilerInstalledVersion": "7.0.2",
+  "compilerSha256": "0ff6140d641f84b64204a2c4d52207c6fc437c9f4db8779c83083d84f7e3d70d",
+  "verifiedPayloadFiles": 98,
+  "productionAndTestPayloadHashesEqual": true,
+  "testedSetupSha256": "36a088d4d50c8d428471eb20c721786ef8aaec5e984edd3f7951246da3bbe797",
+  "checks": [
+    "per-user install, Start Menu shortcut, uninstall registration and installed file hashes",
+    "installed Electron startup, isolated profile, synthetic SQLite and Chromium storage write",
+    "same-identity reinstall reuses location; SQLite and Chromium storage survive upgrade",
+    "uninstall removes program, registration and shortcuts; profile and user-created file hashes unchanged"
+  ],
+  "passed": true,
+  "portableZipUnchanged": true,
+  "portableZipSha256": "8c45c18a6d18d62b4d0d22733ff04fc6eb65797921a45c3ee84db7f012ea35ff",
+  "retainedTag": "v3.1.1",
+  "applicationBusinessCodeChanged": false
+}

@@ -13,6 +13,8 @@
     "windows:start": "electron .",
     "windows:check": "node scripts/codex_check_windows.mjs",
     "windows:package": "node scripts/codex_build_windows.mjs",
+    "windows:installer": "pwsh.exe -NoLogo -NoProfile -NonInteractive -File scripts/codex_build_windows_installer.ps1",
+    "windows:installer:check": "pwsh.exe -NoLogo -NoProfile -NonInteractive -File scripts/codex_check_windows_installer.ps1",
     "typecheck": "tsc --noEmit --incremental false",
     "test": "node --test shared/listeningAnalysis.test.ts shared/listeningContext.test.ts shared/backupAppData.test.ts desktop/codex_sqlite.test.cjs desktop/codex_now_playing.test.cjs"
   },

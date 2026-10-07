@@ -14,13 +14,17 @@
 
 ## 下载与运行
 
-当前版本 **3.1.1**，Windows x64 便携 ZIP，面向 Windows 10 / 11；实际验收系统为 Windows 11 x64。
+当前版本 **3.1.1**，提供 Windows x64 安装包与便携 ZIP，面向 Windows 10 / 11；实际验收系统为 Windows 11 x64。
+
+推荐在 [Releases](https://github.com/Yvesyzy/xiaodongge-windows/releases) 下载文件名包含 `setup_unsigned` 的 `.exe` 及同名 `.exe.sha256.txt`。安装器默认装到当前用户的 `%LOCALAPPDATA%\Programs\xiaodongge-windows`，提供开始菜单入口和可选桌面快捷方式，无需管理员权限。安装后从开始菜单打开「小懂哥」。
+
+如需便携运行：
 
 1. 在 [Releases](https://github.com/Yvesyzy/xiaodongge-windows/releases) 下载 ZIP 和对应的 `.zip.sha256.txt` 校验文件。
 2. 将 ZIP **完整解压**到自己的应用目录。
 3. 双击 `codex_xiaodongge.exe`。同目录的 DLL、`locales` 和 `resources` 必须保留。
 
-运行发行包不需要安装 Node.js、npm 或数据库。当前发行包未进行代码签名，没有安装向导和自动更新。
+运行发行包不需要安装 Node.js、npm 或数据库。**当前安装包和便携包均未签名**，正式代码签名仍需发布者证书；暂无自动更新。
 
 在 ZIP 所在目录用 PowerShell 验证下载完整性：
 
@@ -29,7 +33,7 @@ Get-ChildItem -Filter '*.zip' | Get-FileHash -Algorithm SHA256
 Get-Content -Path '*.zip.sha256.txt'
 ```
 
-将 ZIP 的 SHA-256 与对应校验文件中的值逐字核对。
+将 ZIP 的 SHA-256 与对应校验文件中的值逐字核对。安装包用同样方式核对 `.exe` 和 `.exe.sha256.txt`。
 
 ## 可以做什么
 
@@ -61,7 +65,7 @@ Windows 系统媒体会话未给出专辑或完整合作歌手时，小懂哥会
 
 从安卓版迁移时，先在手机导出包含封面的 JSON，在 Windows 的「备份与恢复」中选择文件并预演差异，核对后再导入。**导入会整体替换本机档案**，请保留原备份；JSON v1–v5 缺少草稿时保留本机草稿，v6 按备份替换草稿。两端通过手动 JSON 备份迁移，没有云同步。
 
-更新时先导出 JSON 并正常关闭旧版，再把新版解压到新目录运行。程序沿用固定的应用数据目录；复制程序目录不能替代备份。
+更新时先导出 JSON 并正常关闭旧版。安装版运行新版安装器覆盖升级，便携版把新版解压到新目录运行。两种方式沿用同一应用数据目录，请勿同时运行。通过 Windows「已安装的应用」卸载安装版时保留档案、草稿和偏好；复制程序目录不能替代备份。
 
 本地记录可以离线使用。当前播放的目录补全会使用 Apple iTunes；仅在手动选择城市后请求 Open-Meteo 天气。本机网易云队列补全与截图 OCR 不需要联网。
 
@@ -90,6 +94,27 @@ npm.cmd run windows:package
 
 Electron 运行时通过上面的安装命令单独下载；保留 Electron 包附带的校验和。
 
+### 构建安装包与签名
+
+额外安装 Inno Setup 7。先生成便携包，再构建安装包；打包前逐项核对便携目录完整性，新的暂存副本中更新使用说明，不改动已有 ZIP 或运行目录。
+
+显式生成未签名安装包：
+
+```powershell
+npm.cmd run windows:installer -- -AllowUnsigned
+```
+
+签名构建还需要 Windows SDK 的 SignTool，以及 Windows 个人证书存储中有私钥的受信任代码签名证书。由证书持有人安全导入证书后，以完整指纹指定；不要把 PFX、密码或私钥提交到 Git。
+
+```powershell
+Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert | Select-Object Subject, Thumbprint, NotAfter
+npm.cmd run windows:installer -- -CertificateThumbprint '证书的完整40位十六进制指纹'
+```
+
+机器证书存储可额外传 `-CertificateStore LocalMachine`；工具不在默认安装位置时，可指定 `-CompilerPath` 和 `-SignToolPath`。签名流程使用 SHA-256 与 RFC 3161 时间戳，并校验程序、安装器和卸载器的可信签名、指定指纹及时间戳。缺少证书或校验失败时停止，不自动降级为未签名包。本次尚无发布者证书，真实证书签名流程未执行。
+
+产物位于 `release/` 中的新目录，包含安装器、SHA-256、清单及构建暂存目录；最新正式构建记录为 `codex_windows_installer_latest.json`。方案见 [安装包设计与验收范围](docs/codex_windows_installer_design.md)。
+
 ## 验证
 
 ```powershell
@@ -101,6 +126,15 @@ npm.cmd run windows:check
 `npm.cmd test` 包含共享备份/分析规则、Windows SQLite 和网易云队列补全的单元测试。真实网易云播放检查使用 `node scripts/codex_check_windows_playback.mjs`；运行前保持网易云播放，该检查会暂停并恢复播放。
 
 本次发行的验证范围见 [Release 说明](docs/codex_release_v3.1.1.md)。Windows 10 和个人 Android 备份的跨端迁移仍需实际设备验收。
+
+安装器的最小回归使用独立安装身份、开始菜单组、安装目录和合成数据 profile，自动安装、启动、覆盖升级和卸载，不操作正式安装或个人档案：
+
+```powershell
+npm.cmd run windows:installer -- -AllowUnsigned -TestIdentity
+npm.cmd run windows:installer:check
+```
+
+检查结果写入 `release/codex_installer_qa_*/codex_installer_checks.json`。验收会在当前 Windows 用户下临时创建专用开始菜单组与卸载登记，结束后移除。检查包括文件哈希、快捷方式、系统卸载登记、SQLite 与 Chromium 存储升级后持久化，以及卸载后的数据与用户自建文件保留。
 
 ## 源码结构
 
