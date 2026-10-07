@@ -1,0 +1,248 @@
+{
+  "version": "3.1.1",
+  "date": "2026-10-07",
+  "status": "passed",
+  "sourceIsolation": "Standalone Windows repository; copied application source matches the original workspace byte for byte.",
+  "unchangedSourceFiles": 92,
+  "typecheck": "passed",
+  "unitTests": {
+    "passed": 48,
+    "failed": 0
+  },
+  "windowsChecks": [
+    "real Electron, native SQLite startup, custom platform, renderer sandbox and empty state",
+    "editor keyboard six ratings, one-decimal average, formal save and v6 export",
+    "native save cancellation, atomic file save, actual saved bytes and clipboard",
+    "native batch collision reports partial save and preserves existing file bytes",
+    "immediate close flushes draft, profile persistence and draft resume after restart",
+    "draft quota failure blocks sidebar navigation and native close; continuing editing preserves input",
+    "actual native restore preview writes/readbacks memory SQLite and preserves main archive",
+    "v1-v6 import, old score preservation, absent/present drafts and undo to original raw draft",
+    "fault after committed replacement rolls back tables, app data, raw drafts and undo snapshot",
+    "restart clears retained recovery barrier after verified rollback",
+    "native data-written journal and damaged draft state recover original bytes at startup",
+    "legacy aggregate and separate songwriting score survive desktop editing without splitting",
+    "actual month/year generation and full v6 roundtrip preserve analysis, covers, relistens, selections and undo",
+    "archive search/type/year, selected record and internal list scroll return; full reader resumes long content",
+    "Windows diagnostics and actual web build identifier",
+    "real Windows media bridge and real OCR text/dimensions/boxes",
+    "1366x768 and 1920x1080 logical window matrix, 100/125/150 percent, light/dark, no horizontal overflow",
+    "packaged executable folder move preserves archive, covers, reports, undo and raw draft; blocked HTTP/HTTPS cold reload and offline save/export pass"
+  ],
+  "layouts": [
+    {
+      "width": 1366,
+      "height": 768,
+      "scale": 1,
+      "viewport": 1366,
+      "scroll": 1351,
+      "detailWidth": 790,
+      "detailScroll": 790,
+      "detailRight": 1338.3333740234375,
+      "devicePixelRatio": 1.5,
+      "theme": "light",
+      "nav": "grid"
+    },
+    {
+      "width": 1366,
+      "height": 768,
+      "scale": 1.25,
+      "viewport": 1093,
+      "scroll": 1080,
+      "detailWidth": 583,
+      "detailScroll": 583,
+      "detailRight": 1080.5334167480469,
+      "devicePixelRatio": 1.875,
+      "theme": "light",
+      "nav": "grid"
+    },
+    {
+      "width": 1366,
+      "height": 768,
+      "scale": 1.5,
+      "viewport": 910,
+      "scroll": 900,
+      "detailWidth": 422,
+      "detailScroll": 422,
+      "detailRight": 900.4444580078125,
+      "devicePixelRatio": 2.25,
+      "theme": "light",
+      "nav": "grid"
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "scale": 1,
+      "viewport": 1920,
+      "scroll": 1905,
+      "detailWidth": 790,
+      "detailScroll": 790,
+      "detailRight": 1615.3333740234375,
+      "devicePixelRatio": 1.5,
+      "theme": "light",
+      "nav": "grid"
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "scale": 1.25,
+      "viewport": 1536,
+      "scroll": 1524,
+      "detailWidth": 790,
+      "detailScroll": 790,
+      "detailRight": 1424.8667602539062,
+      "devicePixelRatio": 1.875,
+      "theme": "light",
+      "nav": "grid"
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "scale": 1.5,
+      "viewport": 1280,
+      "scroll": 1270,
+      "detailWidth": 734,
+      "detailScroll": 734,
+      "detailRight": 1269.7777709960938,
+      "devicePixelRatio": 2.25,
+      "theme": "light",
+      "nav": "grid"
+    },
+    {
+      "width": 1366,
+      "height": 768,
+      "scale": 1,
+      "viewport": 1366,
+      "scroll": 1351,
+      "detailWidth": 790,
+      "detailScroll": 790,
+      "detailRight": 1338.3333740234375,
+      "devicePixelRatio": 1.5,
+      "theme": "dark",
+      "nav": "grid"
+    },
+    {
+      "width": 1366,
+      "height": 768,
+      "scale": 1.25,
+      "viewport": 1093,
+      "scroll": 1080,
+      "detailWidth": 583,
+      "detailScroll": 583,
+      "detailRight": 1080.5334167480469,
+      "devicePixelRatio": 1.875,
+      "theme": "dark",
+      "nav": "grid"
+    },
+    {
+      "width": 1366,
+      "height": 768,
+      "scale": 1.5,
+      "viewport": 910,
+      "scroll": 900,
+      "detailWidth": 422,
+      "detailScroll": 422,
+      "detailRight": 900.4444580078125,
+      "devicePixelRatio": 2.25,
+      "theme": "dark",
+      "nav": "grid"
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "scale": 1,
+      "viewport": 1920,
+      "scroll": 1905,
+      "detailWidth": 790,
+      "detailScroll": 790,
+      "detailRight": 1615.3333740234375,
+      "devicePixelRatio": 1.5,
+      "theme": "dark",
+      "nav": "grid"
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "scale": 1.25,
+      "viewport": 1536,
+      "scroll": 1524,
+      "detailWidth": 790,
+      "detailScroll": 790,
+      "detailRight": 1424.8667602539062,
+      "devicePixelRatio": 1.875,
+      "theme": "dark",
+      "nav": "grid"
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "scale": 1.5,
+      "viewport": 1280,
+      "scroll": 1270,
+      "detailWidth": 734,
+      "detailScroll": 734,
+      "detailRight": 1269.7777709960938,
+      "devicePixelRatio": 2.25,
+      "theme": "dark",
+      "nav": "grid"
+    }
+  ],
+  "runtime": {
+    "chrome": "152.0.7977.130",
+    "sqlite": "3.53.4",
+    "electron": "44.5.1",
+    "node": "24.21.0"
+  },
+  "productionDependencyAudit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "package": {
+    "bytes": 170688569,
+    "sha256": "8c45c18a6d18d62b4d0d22733ff04fc6eb65797921a45c3ee84db7f012ea35ff",
+    "signed": false,
+    "verifiedFiles": 98,
+    "file": "codex_xiaodongge_windows_3.1.1_x64_20261007_032400.zip"
+  },
+  "sourceChecks": [
+    {
+      "file": "codex_main.cjs",
+      "source": "ff6158ebd949d95b26d54aa1cadea6d91af1d9d72e4ba4aba953a85f97846097",
+      "packaged": "ff6158ebd949d95b26d54aa1cadea6d91af1d9d72e4ba4aba953a85f97846097"
+    },
+    {
+      "file": "codex_preload.cjs",
+      "source": "b009c2e7c8fe5d25b7fa31daf284071d86053d8a7a36e1741b84866570cdf916",
+      "packaged": "b009c2e7c8fe5d25b7fa31daf284071d86053d8a7a36e1741b84866570cdf916"
+    },
+    {
+      "file": "codex_sqlite.cjs",
+      "source": "583508ceb962472f0ab4c104d8b3a47fb30d314a42163de0a58334e283bf8d32",
+      "packaged": "583508ceb962472f0ab4c104d8b3a47fb30d314a42163de0a58334e283bf8d32"
+    },
+    {
+      "file": "codex_now_playing.cjs",
+      "source": "c1a08d5ddc125a8106103b30d7ab199ee507ea6fd198b6abacd49d88f8595fbb",
+      "packaged": "c1a08d5ddc125a8106103b30d7ab199ee507ea6fd198b6abacd49d88f8595fbb"
+    },
+    {
+      "file": "native/codex_windows_native.ps1",
+      "source": "e42a95b5627ade88c4308d9df6607e9b202f8c33d659c97c390bf4e58cf6476d",
+      "packaged": "e42a95b5627ade88c4308d9df6607e9b202f8c33d659c97c390bf4e58cf6476d"
+    }
+  ],
+  "screenshots": [
+    "docs/images/codex_windows_home.png",
+    "docs/images/codex_windows_archive.png"
+  ],
+  "screenshotData": "Synthetic test records only.",
+  "limits": [
+    "Windows 11 x64 tested; Windows 10 not tested.",
+    "Personal Android backup migration and other third-party media players not verified in this publication.",
+    "Unsigned portable package; no installer, automatic update, or cloud sync."
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "name": "xiaodongge-windows",
+  "version": "3.1.1",
+  "private": true,
+  "description": "小懂哥 Windows 桌面版：本地私人音乐档案、乐评、重听与年度回顾",
+  "license": "MIT",
+  "main": "desktop/codex_main.cjs",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "windows:build": "vite build --config desktop/codex_vite.config.ts",
+    "windows:start": "electron .",
+    "windows:check": "node scripts/codex_check_windows.mjs",
+    "windows:package": "node scripts/codex_build_windows.mjs",
+    "typecheck": "tsc --noEmit --incremental false",
+    "test": "node --test shared/listeningAnalysis.test.ts shared/listeningContext.test.ts shared/backupAppData.test.ts desktop/codex_sqlite.test.cjs desktop/codex_now_playing.test.cjs"
+  },
+  "dependencies": {
+    "@capacitor-community/sqlite": "8.1.0",
+    "@capacitor/core": "8.4.1",
+    "@capacitor/filesystem": "8.1.2",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-router-dom": "7.18.4"
+  },
+  "devDependencies": {
+    "@types/node": "26.0.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.3",
+    "autoprefixer": "10.5.2",
+    "electron": "44.5.1",
+    "playwright": "1.62.0",
+    "postcss": "8.5.28",
+    "tailwindcss": "3.4.19",
+    "typescript": "6.0.3",
+    "vite": "8.1.0"
+  }
+}
