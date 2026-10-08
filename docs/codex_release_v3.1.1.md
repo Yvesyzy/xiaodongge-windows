@@ -63,3 +63,7 @@ Windows 独立仓库首个发行版本。沿用现有程序版本号 3.1.1，手
 - 签名状态：未签名；正式签名尚待发布者证书。
 
 [安装包验收记录](https://github.com/Yvesyzy/xiaodongge-windows/blob/main/docs/codex_installer_verification_v3.1.1.json)。安装器对应当前 main 的打包脚本，使用同一 3.1.1 程序，原标签与便携 ZIP 未改动。
+
+## Code signing policy
+
+正在准备 SignPath Foundation 免费开源签名申请，尚未获批；此 Release 的四项文件保持原样，仍未签名。参见 [Code signing policy](https://github.com/Yvesyzy/xiaodongge-windows/blob/main/docs/codex_code_signing_policy.md) 和 [隐私说明](https://github.com/Yvesyzy/xiaodongge-windows/blob/main/docs/codex_privacy_policy.md)。实际签名版本须另行验收、发布，不能把申请准备或云端构建成功视为签名完成。

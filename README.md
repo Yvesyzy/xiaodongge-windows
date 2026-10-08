@@ -67,7 +67,7 @@ Windows 系统媒体会话未给出专辑或完整合作歌手时，小懂哥会
 
 更新时先导出 JSON 并正常关闭旧版。安装版运行新版安装器覆盖升级，便携版把新版解压到新目录运行。两种方式沿用同一应用数据目录，请勿同时运行。通过 Windows「已安装的应用」卸载安装版时保留档案、草稿和偏好；复制程序目录不能替代备份。
 
-本地记录可以离线使用。当前播放的目录补全会使用 Apple iTunes；仅在手动选择城市后请求 Open-Meteo 天气。本机网易云队列补全与截图 OCR 不需要联网。
+本地记录可以离线使用。打开记录/速记页面后读取当前播放会请求 Apple iTunes 补全；速记页重新可见时也会读取。选择天气城市后，回顾可补取 Open-Meteo 历史天气。本机网易云队列补全与截图 OCR 不需要联网。详见 [隐私说明](docs/codex_privacy_policy.md)。
 
 ## 从源码构建
 
@@ -114,6 +114,12 @@ npm.cmd run windows:installer -- -CertificateThumbprint '证书的完整40位十
 机器证书存储可额外传 `-CertificateStore LocalMachine`；工具不在默认安装位置时，可指定 `-CompilerPath` 和 `-SignToolPath`。签名流程使用 SHA-256 与 RFC 3161 时间戳，并校验程序、安装器和卸载器的可信签名、指定指纹及时间戳。缺少证书或校验失败时停止，不自动降级为未签名包。本次尚无发布者证书，真实证书签名流程未执行。
 
 产物位于 `release/` 中的新目录，包含安装器、SHA-256、清单及构建暂存目录；最新正式构建记录为 `codex_windows_installer_latest.json`。方案见 [安装包设计与验收范围](docs/codex_windows_installer_design.md)。
+
+### Code signing policy
+
+正在准备 [SignPath Foundation](https://signpath.org/apply) 免费开源签名申请，尚未获批或取得证书；当前发行包仍未签名。[Code signing policy](docs/codex_code_signing_policy.md) 记录审批责任、签名范围与待满足条件。
+
+[Windows build](https://github.com/Yvesyzy/xiaodongge-windows/actions/workflows/codex_windows_build.yml) 可手动运行 GitHub 托管构建，生成未签名安装包、便携包、校验文件和清单；构建不会自动发布。它复用上述脚本，检查类型与单元测试，并固定 Action 提交及 Inno Setup 安装程序摘要。云端构建不代替本机媒体会话、OCR 或安装升级回归验收。
 
 ## 验证
 

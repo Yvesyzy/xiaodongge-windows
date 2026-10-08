@@ -1,0 +1,76 @@
+name: Windows build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies and Electron
+        run: |
+          npm.cmd ci --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
+          node node_modules/electron/install.js
+          if ($LASTEXITCODE -ne 0) { throw 'Electron installation failed.' }
+      - name: Check types and unit tests
+        run: |
+          npm.cmd run typecheck
+          if ($LASTEXITCODE -ne 0) { throw 'Type checking failed.' }
+          npm.cmd test
+          if ($LASTEXITCODE -ne 0) { throw 'Unit tests failed.' }
+      - name: Build and verify portable package
+        run: npm.cmd run windows:package
+      - name: Install verified Inno Setup 7.0.2 and build unsigned installer
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP 'codex_innosetup-7.0.2-x64.exe'
+          $compilerRoot = Join-Path $env:RUNNER_TEMP 'codex_inno_setup'
+          Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-7_0_2/innosetup-7.0.2-x64.exe' -OutFile $installer
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ne '5ad54ca3def786f8f4212552e54cc6d8d61329e2d24a1cfee0571d42c2684ff1') {
+            throw 'Inno Setup download hash mismatch.'
+          }
+          if ((Get-AuthenticodeSignature -LiteralPath $installer).Status -ne 'Valid') {
+            throw 'Inno Setup download must have a valid trusted signature.'
+          }
+          $start = [Diagnostics.ProcessStartInfo]::new($installer)
+          $start.UseShellExecute = $false
+          $start.CreateNoWindow = $true
+          foreach ($argument in @('/CURRENTUSER', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=$compilerRoot")) {
+            $start.ArgumentList.Add($argument)
+          }
+          $process = [Diagnostics.Process]::Start($start)
+          $process.WaitForExit()
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed: $($process.ExitCode)" }
+          npm.cmd run windows:installer -- -AllowUnsigned -CompilerPath (Join-Path $compilerRoot 'ISCC.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
+      - name: Upload unsigned build artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: codex_windows_unsigned_${{ github.run_id }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+          path: |
+            release/*.zip
+            release/*.zip.sha256.txt
+            release/*/codex_package_manifest.json
+            release/*setup_unsigned*/*.exe
+            release/*setup_unsigned*/*.exe.sha256.txt
+            release/*setup_unsigned*/codex_installer_manifest.json
