@@ -95,7 +95,7 @@ export function classifyDay(date: string): DayContext {
   const official = HOLIDAYS[year];
   const holiday = official?.holidays.find((item) => item.dates.includes(date)) ?? null;
   const adjusted = official?.adjustedWorkdays.includes(date) ?? false;
-  const weekday = new Date(`${date}T00:00:00+08:00`).getDay();
+  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
   const weekend = weekday === 0 || weekday === 6;
   const kind: DayKind = adjusted ? "adjusted_workday" : holiday ? "public_holiday" : weekend ? "ordinary_holiday" : "ordinary_workday";
   const festivals = new Set<string>();
