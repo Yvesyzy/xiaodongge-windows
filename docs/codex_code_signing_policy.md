@@ -2,7 +2,7 @@
 
 ## Current status
 
-The [SignPath Foundation](https://signpath.org/apply) free open source signing application remains paused by the maintainer; no approval, signing subscription or project certificate has been confirmed. A **locally generated self-signed development certificate** was introduced on 2026-11-12 to exercise the full Authenticode build chain. It is **not** a trusted CA-issued publisher certificate. The v3.5.1 installer, its embedded executable and the generated uninstaller carry this self-signed signature; the portable ZIP remains unsigned.
+The [SignPath Foundation](https://signpath.org/apply) free open source signing application was resumed by the maintainer on 2026-11-12 and is being pursued through official support after the 2026-10-08 CAPTCHA rejection. No submission receipt, approval, signing subscription or project certificate has been confirmed. A **locally generated self-signed development certificate** was introduced on 2026-11-12 to exercise the full Authenticode build chain. It is **not** a trusted CA-issued publisher certificate. The v3.5.1 installer, its embedded executable and the generated uninstaller carry this self-signed signature; the portable ZIP remains unsigned.
 
 Only after approval and publication of a verified signed build will the following attribution apply: Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
 

@@ -137,7 +137,7 @@ npm.cmd run windows:installer -- -CertificateThumbprint '证书的完整40位十
 
 ### Code signing policy
 
-[SignPath Foundation](https://signpath.org/apply) 免费开源签名申请按此前决定保持暂停，尚未获批。2026-11-12 已创建自签名开发证书用于验证签名链路，其信任边界与签名范围见下。[Code signing policy](docs/codex_code_signing_policy.md) 记录审批责任、签名范围、信任边界与待满足条件。
+[SignPath Foundation](https://signpath.org/apply) 免费开源签名申请已于 2026-11-12 恢复，正通过官方支持渠道处理 2026-10-08 的 CAPTCHA 阻塞；尚未获得提交回执或批准。2026-11-12 已创建自签名开发证书用于验证签名链路，其信任边界与签名范围见下。[Code signing policy](docs/codex_code_signing_policy.md) 记录审批责任、签名范围、信任边界与待满足条件。
 
 [Windows build](https://github.com/Yvesyzy/xiaodongge-windows/actions/workflows/codex_windows_build.yml) 可手动运行 GitHub 托管构建，生成便携包、未签名安装器、校验文件和清单（云端无签名证书）；构建不会自动发布。它复用上述脚本，检查类型与单元测试，并固定 Action 提交及 Inno Setup 安装程序摘要。云端构建不代替本机媒体会话、OCR 或安装升级回归验收。
 

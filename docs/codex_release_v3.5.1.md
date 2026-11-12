@@ -63,7 +63,7 @@ Get-Content -Path '*.zip.sha256.txt'
 ## 已知限制
 
 - **安装器使用 Yves 本机创建的自签名开发证书签名，不是受信任 CA 签发的发布者证书**。证书 `CN=Xiaodongge Windows Dev Code Signing, O=Yves, C=CN`，指纹 `072BB4C71E51A2A2BCA66CFBF3A6F331BCCA4B26`，有效期至 2029-11-12；签名带 DigiCert RFC 3161 时间戳。在已把该证书导入 `CurrentUser\Root` 的本机上，`Get-AuthenticodeSignature` 为 `Valid`；**其他 Windows 机器未导入该根证书时会显示签名无效或未知发布者**，不能据此宣称已获得正式代码签名，也不消除 SmartScreen 提示。
-- **便携 ZIP 仍未签名**。签名范围按政策仅含安装器、内嵌主程序与安装后生成的卸载器。SignPath Foundation 申请按此前决定保持暂停，尚未获批；取得受信任证书后需重新签名、重算 SHA-256、重跑覆盖回归并替换 Release 资产。没有自动更新或云同步。
+- **便携 ZIP 仍未签名**。签名范围按政策仅含安装器、内嵌主程序与安装后生成的卸载器。SignPath Foundation 申请已于 2026-11-12 恢复，正在通过官方支持渠道处理 CAPTCHA 阻塞，尚未获得提交回执或批准；取得受信任证书后需重新签名、重算 SHA-256、重跑覆盖回归并替换 Release 资产。没有自动更新或云同步。
 - 公众号后台导入 `.md` 后的最终样式、图片上传与微信实际粘贴，需在你的编辑器中确认；桌面版没有系统分享菜单，「分享 MD 文件」只打开导出文件夹。
 - 系统播放封面已在网易云与酷狗实播验收，其他播放器未逐款实测；OCR 语言取决于系统已安装的语言包。Windows 10 与 Android 备份跨端迁移仍需实际设备验收。
 - 构建需要 PowerShell 7；若本机 `pwsh.exe` 不在 PATH，可通过 `CODEX_POWERSHELL` 环境变量指向便携版可执行文件，GitHub 托管构建的默认行为不变。
