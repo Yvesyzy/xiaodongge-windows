@@ -469,6 +469,23 @@ try {
     await page.screenshot({ path: path.join(output, 'codex_packaged_offline_backup.png'), fullPage: true });
     checks.push('packaged executable folder move preserves archive, covers, reports, undo and raw draft; blocked HTTP/HTTPS cold reload and offline save/export pass');
   }
+  // 合并导入：只含一条新记录的备份，勾选合并后应保留本机全部记录并新增该条。
+  await navigate('/backup');
+  await page.getByRole('heading', { name: '备份', exact: true }).waitFor();
+  const beforeMerge = await exportBackup();
+  const mergeEntry = { ...structuredClone(fixtureEntries[0]), id: 'codex_windows_merge_only', title: '跨端合并新增（合成）', updatedAt: new Date().toISOString() };
+  const mergePayload = { version: 6, exportedAt: new Date().toISOString(), entries: [mergeEntry],
+    summaries: [], monthlySummaries: [], covers: [], listeningMoments: [], appData: {}, drafts: [] };
+  await page.getByLabel('合并导入（跨端迁移建议勾选）').check();
+  await page.getByLabel('粘贴备份 JSON').fill(JSON.stringify(mergePayload));
+  await page.getByRole('button', { name: '预演恢复并查看差异', exact: true }).click();
+  await page.getByText('Windows 隔离数据库恢复与回读通过', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '合并导入', exact: true }).click();
+  const afterMerge = await exportBackup();
+  assert.ok(afterMerge.entries.some(entry => entry.id === mergeEntry.id), 'merge import must add the incoming entry');
+  for (const entry of beforeMerge.entries) assert.ok(afterMerge.entries.some(item => item.id === entry.id), `merge import dropped local entry ${entry.id}`);
+  checks.push('merge import keeps all local entries and adds the incoming one');
+
   assert.deepEqual(errors, []);
   const result = { status: 'passed', profile, output, checks, layouts, versions: await application.evaluate(() => process.versions) };
   await writeFile(path.join(output, 'codex_windows_checks.json'), JSON.stringify(result, null, 2));

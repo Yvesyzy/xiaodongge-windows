@@ -14,7 +14,7 @@
 
 ## 下载与运行
 
-已公开发布版本 **3.5.1**，提供 Windows x64 安装包与便携 ZIP，面向 Windows 10 / 11；实际验收系统为 Windows 11 x64。本版与手机端 v3.5.1 功能对齐，并纳入此前未正式发布的 3.2.0 / 3.2.1 系统播放封面改动。3.1.1 及更早版本可直接覆盖升级，个人档案、封面、草稿与阅读设置保留。
+已公开发布版本 **3.5.2**，提供 Windows x64 安装包与便携 ZIP，面向 Windows 10 / 11；实际验收系统为 Windows 11 x64。本版新增跨端合并导入与固定同步文件名，与手机端 v3.5.2 对应。3.5.1 及更早版本可直接覆盖升级，个人档案、封面、草稿与阅读设置保留。
 
 推荐在 [Releases](https://github.com/Yvesyzy/xiaodongge-windows/releases) 下载文件名包含 `setup_signed` 的 `.exe` 及同名 `.exe.sha256.txt`。安装器默认装到当前用户的 `%LOCALAPPDATA%\Programs\xiaodongge-windows`，提供开始菜单入口和可选桌面快捷方式，无需管理员权限。安装后从开始菜单打开「小懂哥」。
 
@@ -151,7 +151,11 @@ npm.cmd run windows:check
 
 `npm.cmd test` 包含共享备份／分析规则、日期口径、公众号出稿模型、Windows SQLite 和网易云队列补全的单元测试。**单测需要 Node.js 24 或以上**：`desktop/codex_sqlite.cjs` 使用 `DatabaseSync.setAuthorizer`，在 Node 22 下对应的 6 项会因 API 缺失失败，其余用例仍可通过。本机若默认 Node 版本较低，可显式用 Node 24 的可执行文件运行 `node --test <文件列表>`。真实网易云播放检查使用 `node scripts/codex_check_windows_playback.mjs`；运行前保持网易云播放，该检查会暂停并恢复播放。
 
-本次发行的验证范围见 [v3.5.1 Release 说明](docs/codex_release_v3.5.1.md)。Windows 10 和个人 Android 备份的跨端迁移仍需实际设备验收。
+本次发行的验证范围见 [v3.5.2 Release 说明](docs/codex_release_v3.5.2.md)。Windows 10 和个人 Android 备份的跨端迁移仍需实际设备验收。
+
+## 跨端迁移
+
+在手机端导出 JSON（可勾选「跨端同步：使用固定文件名」得到 `xiaodongge-from-android.json`），传到电脑后在本程序的备份与恢复页选择该文件，勾选「合并导入」，预演确认差异后导入。两端各自新写的记录都会保留，同一条记录以 `updatedAt` 较新者为准；推文草稿不在 JSON 备份内，需单独导出 Markdown 稿。反向迁移同理，电脑端导出 `xiaodongge-from-windows.json`。
 
 安装器的最小回归使用独立安装身份、开始菜单组、安装目录和合成数据 profile，自动安装、启动、覆盖升级和卸载，不操作正式安装或个人档案：
 

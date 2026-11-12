@@ -1,11 +1,11 @@
-#Requires -Version 7.0
+﻿#Requires -Version 5.1
 [CmdletBinding()]
 param([string] $MetadataPath)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 if (-not $MetadataPath) { $MetadataPath = Join-Path $root 'release\codex_windows_installer_test_latest.json' }
-$metadata = Get-Content -LiteralPath $MetadataPath -Raw | ConvertFrom-Json
+$metadata = Get-Content -LiteralPath $MetadataPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not $metadata.testIdentity -or -not $metadata.appId.StartsWith('xiaodongge.windows.codex-test-') -or
     -not $metadata.group.StartsWith('codex_xiaodongge_installer_')) { throw 'Only a -TestIdentity installer may be tested automatically.' }
 $release = (Resolve-Path -LiteralPath (Join-Path $root 'release')).Path + '\'
@@ -15,7 +15,7 @@ if (-not $setup.StartsWith($release, [StringComparison]::OrdinalIgnoreCase) -or
 $qa = Join-Path $release ('codex_installer_qa_' + (Get-Date).ToUniversalTime().ToString('yyyyMMdd_HHmmss_fff'))
 $install = Join-Path $qa 'installed'
 $profile = Join-Path $qa 'profile'
-$shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) ($metadata.group + '\小懂哥.lnk')
+$shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) ($metadata.group + '\' + (-join ([char]0x5C0F, [char]0x61C2, [char]0x54E5)) + '.lnk')
 if (Test-Path -LiteralPath (Split-Path -Parent $shortcut)) { throw 'Test shortcut group already exists.' }
 New-Item -ItemType Directory -Path $qa | Out-Null
 $checks = [Collections.Generic.List[string]]::new()
@@ -28,7 +28,8 @@ function Run-Installer([string] $File, [string[]] $Arguments) {
     $processInfo.UseShellExecute = $false
     $processInfo.CreateNoWindow = $true
     $processInfo.WindowStyle = 'Hidden'
-    foreach ($argument in $Arguments) { $processInfo.ArgumentList.Add($argument) }
+    $quoted = foreach ($argument in $Arguments) { if ($argument -match '\s') { '"' + $argument + '"' } else { $argument } }
+    $processInfo.Arguments = $quoted -join ' '
     $process = [Diagnostics.Process]::Start($processInfo)
     try {
         if (-not $process.WaitForExit(120000)) { throw 'Installer exceeded the 120-second limit; inspect the test process and log.' }
@@ -43,7 +44,7 @@ function Registration {
 }
 
 function Check-Payload {
-    $manifest = Get-Content -LiteralPath (Join-Path $install 'codex_package_manifest.json') -Raw | ConvertFrom-Json
+    $manifest = Get-Content -LiteralPath (Join-Path $install 'codex_package_manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     foreach ($entry in $manifest.files) {
         $file = Join-Path $install $entry.path
         if ((Get-Item -LiteralPath $file).Length -ne $entry.bytes -or
@@ -82,7 +83,9 @@ try {
         [pscustomobject]@{ path = $_.FullName; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
     })
     $protected += [pscustomobject]@{ path = $sentinel; sha256 = (Get-FileHash -LiteralPath $sentinel -Algorithm SHA256).Hash }
-    $programFiles = @(Get-ChildItem -LiteralPath $install -Recurse -File | Where-Object { $_.FullName -ne $sentinel }).FullName
+    # Only files the installer owns must be gone; runtime logs and user-created files are not in the manifest.
+    $installedManifest = Get-Content -LiteralPath (Join-Path $install 'codex_package_manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $programFiles = @($installedManifest.files | ForEach-Object { Join-Path $install $_.path })
     Run-Installer $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$(Join-Path $qa 'codex_uninstall.log')")
     $uninstaller = $null
     for ($attempt = 0; $attempt -lt 20 -and @($programFiles | Where-Object { Test-Path -LiteralPath $_ }).Count; $attempt++) {

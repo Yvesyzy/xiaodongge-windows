@@ -10,6 +10,7 @@ import { readMusicMetadata } from "./musicMetadata";
 import { groupMusicEntries } from "./musicIdentity";
 import { activeMonths, entryDate, inPeriod, type DateBasis } from "./dateBasis";
 import { BACKUP_HEALTH_KEY, readBackupAppData, readPreferredQuote, readSemanticOverride, readYearTopAlbums, SEMANTIC_OVERRIDES_KEY, TOP_ALBUMS_PREFIX, WEATHER_LOCATION_KEY } from "../../shared/backupAppData";
+import { mergeBackupData } from "../../shared/backupMerge";
 import type { BackupPreview } from "./backupHealth";
 import { listRawEntryDrafts, readStoredEntryDraft, MAX_NEW_DRAFTS, type StoredEntryDraft } from "./entryDraft";
 import { acquireStorageSession, clearRecoveryError, RESTORE_GATE_KEY, WEB_RESTORE_JOURNAL_KEY, withRestoreLock, withStorageAccess, markRecoveryError } from "./codex_restoreState";
@@ -726,8 +727,8 @@ class Store {
     return formatEntriesCsv(await this.listEntries(), await this.listSummaries());
   }
 
-  async importBackup(raw: string, options: { includeCovers?: boolean } = {}, expectedLocalSha256?: string) {
-    const backup = parseBackup(raw, options);
+  async importBackup(raw: string, options: ImportOptions = {}, expectedLocalSha256?: string) {
+    const backup = await this.resolveImportBackup(raw, options);
     let stale = false;
     await withRestoreLock(async () => {
       await this.requireNoJournal();
@@ -877,8 +878,16 @@ class Store {
     return summarizeBackup(parseBackup(raw, options));
   }
 
-  async previewRestoreDiff(raw: string, options: { includeCovers?: boolean } = {}): Promise<RestoreDiffReport> {
+  private async resolveImportBackup(raw: string, options: ImportOptions): Promise<BackupData> {
     const backup = parseBackup(raw, options);
+    if (options.mode !== "merge") return backup;
+    // ponytail: exportMainData 已含合并所需的全部字段，缺的两个元信息字段不参与合并。
+    const current = await this.exportMainData() as unknown as BackupData;
+    return { ...mergeBackupData(current, backup, options), draftsPresence: "present" };
+  }
+
+  async previewRestoreDiff(raw: string, options: ImportOptions = {}): Promise<RestoreDiffReport> {
+    const backup = await this.resolveImportBackup(raw, options);
     const current = await this.exportMainData();
     const currentDrafts = listRawEntryDrafts(localStorage);
     const targetCovers = options.includeCovers === false ? current.covers : backup.covers;
@@ -901,9 +910,9 @@ class Store {
     };
   }
 
-  async rehearseRestore(raw: string, options: { includeCovers?: boolean } = {}): Promise<RestoreRehearsal> {
+  async rehearseRestore(raw: string, options: ImportOptions = {}): Promise<RestoreRehearsal> {
     const diff = await this.previewRestoreDiff(raw, options);
-    const backup = parseBackup(raw, options);
+    const backup = await this.resolveImportBackup(raw, options);
     const current = await this.exportMainData();
     const currentDrafts = listRawEntryDrafts(localStorage);
     if (await sha256(mainSignature(current) + draftSignature(currentDrafts)) !== diff.localSha256) {
@@ -1250,6 +1259,8 @@ function validateEntry(entry: ReviewEntry) {
   if (entry.releaseDate !== null && entry.releaseDate !== undefined && !isValidReleaseDate(entry.releaseDate)) throw new Error("发行日期必须是 YYYY-MM-DD 日期");
   readMusicMetadata(entry.musicMetadata, "entry.musicMetadata");
 }
+
+export type ImportOptions = { includeCovers?: boolean; mode?: "replace" | "merge" };
 
 type BackupData = {
   version: 6;

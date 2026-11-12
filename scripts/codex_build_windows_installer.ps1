@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 5.1
 [CmdletBinding()]
 param(
     [string] $SourceFolder,
@@ -12,20 +12,20 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-if (-not $IsWindows -or [Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne 'X64') {
-    throw 'Build on Windows x64 with PowerShell 7.'
+if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
+    throw 'Build on Windows x64.'
 }
 if ($AllowUnsigned -and $CertificateThumbprint) { throw 'Choose a certificate or -AllowUnsigned, not both.' }
 if (-not $AllowUnsigned -and -not $CertificateThumbprint) {
     throw 'A trusted code-signing certificate thumbprint is required. Use -AllowUnsigned explicitly for an unsigned installer.'
 }
 if (-not $SourceFolder) {
-    $SourceFolder = (Get-Content -LiteralPath (Join-Path $root 'release\codex_windows_latest.json') -Raw | ConvertFrom-Json).folder
+    $SourceFolder = (Get-Content -LiteralPath (Join-Path $root 'release\codex_windows_latest.json') -Raw -Encoding UTF8 | ConvertFrom-Json).folder
 }
 $SourceFolder = (Resolve-Path -LiteralPath $SourceFolder).Path
 $manifestPath = Join-Path $SourceFolder 'codex_package_manifest.json'
-$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$package = Get-Content -LiteralPath (Join-Path $root 'package.json') -Raw | ConvertFrom-Json
+$manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$package = Get-Content -LiteralPath (Join-Path $root 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($manifest.version -ne $package.version -or $manifest.executable -ne 'codex_xiaodongge.exe' -or
     $manifest.userDataIdentity -ne 'xiaodongge-windows') { throw 'Portable package identity or version mismatch.' }
 $inventory = @(Get-ChildItem -LiteralPath $SourceFolder -Recurse -Force)
@@ -97,12 +97,14 @@ $name = "codex_xiaodongge_windows_$($package.version)_x64_setup_${mode}_$stamp"
 $output = Join-Path $root "release\$name"
 New-Item -ItemType Directory -Path $output | Out-Null
 $appId = 'xiaodongge.windows'
-$group = '小懂哥'
+# ponytail: PS 5.1 按系统代码页解析脚本，中文用码点构造以免运行时乱码。
+$readmeName = 'codex_user_guide.md'
+$group = -join ([char]0x5C0F, [char]0x61C2, [char]0x54E5)
 if ($TestIdentity) { $appId += ".codex-test-$stamp"; $group = "codex_xiaodongge_installer_$stamp" }
 $payload = Join-Path $output 'codex_payload'
 Copy-Item -LiteralPath $SourceFolder -Destination $payload -Recurse
-Copy-Item -LiteralPath (Join-Path $root 'desktop\codex_README.md') -Destination (Join-Path $payload 'codex_使用说明.md') -Force
-$changedFiles = @('codex_使用说明.md')
+Copy-Item -LiteralPath (Join-Path $root 'desktop\codex_README.md') -Destination (Join-Path $payload $readmeName) -Force
+$changedFiles = @($readmeName)
 $compilerArgs = @('/Qp', "/DCODEX_VERSION=$($package.version)", "/DCODEX_APP_ID=$appId", "/DCODEX_GROUP=$group",
     "/DCODEX_OUTPUT=$output", "/DCODEX_FILENAME=$name")
 if (-not $AllowUnsigned) {

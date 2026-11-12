@@ -16,8 +16,6 @@ const folder = path.join(root, 'release', name);
 const zip = `${folder}.zip`;
 const runtime = path.dirname(require('electron'));
 const run = (file, args, env = {}) => execFileSync(file, args, { cwd: root, windowsHide: true, stdio: 'inherit', env: { ...process.env, ...env } });
-// CI images provide pwsh.exe on PATH; portable/local builds can point CODEX_POWERSHELL at a specific executable.
-const powerShell = process.env.CODEX_POWERSHELL || 'pwsh.exe';
 
 await access(path.join(root, 'desktop', 'native', 'codex_windows_native.ps1'));
 await mkdir(folder, { recursive: false });
@@ -36,7 +34,7 @@ for (const file of ['codex_main.cjs', 'codex_preload.cjs', 'codex_sqlite.cjs', '
 }
 await cp(path.join(root, 'LICENSE'), path.join(appFolder, 'LICENSE'));
 await cp(path.join(root, 'mobile', 'public', 'codex_font_licenses.txt'), path.join(appFolder, 'codex_font_licenses.txt'));
-await cp(path.join(root, 'desktop', 'codex_README.md'), path.join(folder, 'codex_使用说明.md'));
+await cp(path.join(root, 'desktop', 'codex_README.md'), path.join(folder, 'codex_user_guide.md'));
 
 async function hashFile(file) {
   const hash = createHash('sha256');
@@ -59,31 +57,26 @@ const manifest = { version: packageInfo.version, electron: require('electron/pac
 const manifestPath = path.join(folder, 'codex_package_manifest.json');
 await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 
-// Paths travel as environment values, never interpolated PowerShell source.
-const packEnvironment = { CODEX_PACKAGE_FOLDER: folder, CODEX_PACKAGE_ZIP: zip, CODEX_PACKAGE_MANIFEST: manifestPath };
-run(powerShell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
-  "$ErrorActionPreference = 'Stop'; Compress-Archive -LiteralPath $env:CODEX_PACKAGE_FOLDER -DestinationPath $env:CODEX_PACKAGE_ZIP -CompressionLevel Optimal"], packEnvironment);
-run(powerShell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', `
-$ErrorActionPreference = 'Stop'
-$manifest = Get-Content -LiteralPath $env:CODEX_PACKAGE_MANIFEST -Raw | ConvertFrom-Json
-$archive = [System.IO.Compression.ZipFile]::OpenRead($env:CODEX_PACKAGE_ZIP)
-$prefix = Split-Path -Path $env:CODEX_PACKAGE_FOLDER -Leaf
-$verified = 0
-try {
-  foreach ($file in $manifest.files) {
-    $entry = $archive.GetEntry($prefix + '/' + $file.path)
-    if ($null -eq $entry -or $entry.Length -ne $file.bytes) { throw ('ZIP size mismatch: ' + $file.path) }
-    $stream = $entry.Open()
-    $sha = [System.Security.Cryptography.SHA256]::Create()
-    try { $hash = [System.Convert]::ToHexString($sha.ComputeHash($stream)).ToLowerInvariant() }
-    finally { $sha.Dispose(); $stream.Dispose() }
-    if ($hash -ne $file.sha256) { throw ('ZIP hash mismatch: ' + $file.path) }
-    $verified++
+// ponytail: jszip 已在依赖中；压缩与逐文件校验走 Node，去掉对 PowerShell 7 / Compress-Archive 的外部依赖。
+const JSZip = (await import('jszip')).default;
+const prefix = path.basename(folder);
+const archive = new JSZip();
+for (const file of files) {
+  archive.file(`${prefix}/${file.path.replaceAll('\\', '/')}`, await readFile(path.join(folder, file.path)));
+}
+archive.file(`${prefix}/codex_package_manifest.json`, await readFile(manifestPath));
+await writeFile(zip, await archive.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 9 } }));
+const verify = await JSZip.loadAsync(await readFile(zip));
+if (Object.values(verify.files).filter(entry => !entry.dir).length !== files.length + 1) throw new Error('ZIP inventory mismatch');
+for (const file of files) {
+  const entry = verify.file(`${prefix}/${file.path.replaceAll('\\', '/')}`);
+  if (!entry) throw new Error(`ZIP missing: ${file.path}`);
+  const bytes = await entry.async('nodebuffer');
+  if (bytes.length !== file.bytes || createHash('sha256').update(bytes).digest('hex') !== file.sha256) {
+    throw new Error(`ZIP hash mismatch: ${file.path}`);
   }
-  if (($archive.Entries | Where-Object { -not $_.FullName.EndsWith('/') }).Count -ne $manifest.fileCount + 1) { throw 'ZIP inventory mismatch' }
-} finally { $archive.Dispose() }
-Write-Output ('ZIP_VERIFIED files=' + $verified)
-`], packEnvironment);
+}
+console.log(`ZIP_VERIFIED files=${files.length}`);
 const result = { folder, zip, executable: path.join(folder, 'codex_xiaodongge.exe'),
   version: packageInfo.version, sha256: await hashFile(zip), bytes: (await stat(zip)).size,
   manifest: manifestPath, verifiedFiles: files.length, signed: false };
