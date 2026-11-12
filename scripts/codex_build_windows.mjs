@@ -16,6 +16,8 @@ const folder = path.join(root, 'release', name);
 const zip = `${folder}.zip`;
 const runtime = path.dirname(require('electron'));
 const run = (file, args, env = {}) => execFileSync(file, args, { cwd: root, windowsHide: true, stdio: 'inherit', env: { ...process.env, ...env } });
+// CI images provide pwsh.exe on PATH; portable/local builds can point CODEX_POWERSHELL at a specific executable.
+const powerShell = process.env.CODEX_POWERSHELL || 'pwsh.exe';
 
 await access(path.join(root, 'desktop', 'native', 'codex_windows_native.ps1'));
 await mkdir(folder, { recursive: false });
@@ -59,9 +61,9 @@ await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 
 // Paths travel as environment values, never interpolated PowerShell source.
 const packEnvironment = { CODEX_PACKAGE_FOLDER: folder, CODEX_PACKAGE_ZIP: zip, CODEX_PACKAGE_MANIFEST: manifestPath };
-run('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
+run(powerShell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
   "$ErrorActionPreference = 'Stop'; Compress-Archive -LiteralPath $env:CODEX_PACKAGE_FOLDER -DestinationPath $env:CODEX_PACKAGE_ZIP -CompressionLevel Optimal"], packEnvironment);
-run('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', `
+run(powerShell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', `
 $ErrorActionPreference = 'Stop'
 $manifest = Get-Content -LiteralPath $env:CODEX_PACKAGE_MANIFEST -Raw | ConvertFrom-Json
 $archive = [System.IO.Compression.ZipFile]::OpenRead($env:CODEX_PACKAGE_ZIP)

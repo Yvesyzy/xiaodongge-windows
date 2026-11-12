@@ -2,6 +2,7 @@ node_modules/
 desktop/dist/
 dist/
 release/
+tmp/
 *.tsbuildinfo
 *.log
 .env

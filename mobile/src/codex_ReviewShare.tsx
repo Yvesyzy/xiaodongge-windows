@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { JournalExport } from "./codex_JournalExport";
 import { journalCover, journalDate, journalRating, journalTitle } from "./codex_yearbookModel";
 import { blobToBase64, downloadBlob } from "./shareCard";
-import { NativeExport } from "./nativeExport";
+import { NativeExport, copyText, saveFile } from "./nativeExport";
 import { ENTRY_TYPE_LABELS, type ReviewEntry } from "./types";
 import type { JournalImageOptions, JournalShareTheme } from "./codex_yearbookPages";
 import "./codex_reviewShare.css";
+import { canLeavePage } from "./codex_Navigation";
+
+const EntryPublication = lazy(() => import("./codex_PublicationComposer").then(module => ({ default: module.EntryPublication })));
 
 export type ReviewShareProps = {
   entry: ReviewEntry;
@@ -38,7 +41,7 @@ const CARD_FONT = '"Microsoft YaHei", "PingFang SC", system-ui, sans-serif';
 export default function ReviewShare({ entry, onClose }: ReviewShareProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const lock = useRef(false);
-  const [mode, setMode] = useState<"excerpt" | "pages">("excerpt");
+  const [mode, setMode] = useState<"excerpt" | "pages" | "publication">("excerpt");
   const [theme, setTheme] = useState<JournalShareTheme>("paper");
   const [privacy, setPrivacy] = useState<ReviewSharePrivacy>(DEFAULT_PRIVACY);
   const [excerptStart, setExcerptStart] = useState(0);
@@ -91,7 +94,7 @@ export default function ReviewShare({ entry, onClose }: ReviewShareProps) {
   }, [entry, cover, privacy, theme, mode, excerpt]);
 
   function close() {
-    if (!lock.current) onClose();
+    if (!lock.current && (mode !== "publication" || canLeavePage())) onClose();
   }
 
   function updatePrivacy(key: keyof ReviewSharePrivacy, checked: boolean) {
@@ -110,14 +113,18 @@ export default function ReviewShare({ entry, onClose }: ReviewShareProps) {
     setExcerptStart((current) => Math.min(current, Math.max(0, contentLength - nextLength)));
   }
 
-  async function saveExcerpt() {
+  async function saveExcerpt(toGallery = false) {
     if (!card || lock.current) return;
     lock.current = true;
     setBusy(true); setError(""); setStatus("");
     const fileName = reviewFileName(entry);
     try {
-      if (native) {
-        const result = await NativeExport.saveFile({ fileName, mimeType: "image/png", encoding: "base64", content: await blobToBase64(card.blob) });
+      if (toGallery) {
+        const result = await NativeExport.saveImageToGallery({ fileName, mimeType: "image/png", encoding: "base64", content: await blobToBase64(card.blob) });
+        if (result?.status !== "saved" || typeof result.uri !== "string" || !result.uri.trim()) throw new Error("系统未确认图片保存，图片预览仍保留");
+        setStatus("已保存摘录卡图片");
+      } else if (native) {
+        const result = await saveFile({ fileName, mimeType: "image/png", encoding: "base64", content: await blobToBase64(card.blob) });
         setStatus(result.status === "cancelled" ? "已取消保存摘录卡，当前设置已保留" : `已保存摘录卡：${fileName}`);
       } else {
         downloadBlob(card.blob, fileName);
@@ -164,9 +171,7 @@ export default function ReviewShare({ entry, onClose }: ReviewShareProps) {
     lock.current = true;
     setBusy(true); setError(""); setStatus("");
     try {
-      if (native) await NativeExport.copyText({ text: shareText });
-      else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(shareText);
-      else throw new Error("当前浏览器不支持复制文字");
+      await copyText(shareText);
       setStatus("分享文字已复制");
     } catch (reason) {
       setError(reason instanceof Error ? `复制失败：${reason.message}` : "复制失败，请重试");
@@ -175,24 +180,25 @@ export default function ReviewShare({ entry, onClose }: ReviewShareProps) {
     }
   }
 
-  return <dialog ref={dialog} className="review-share-dialog" aria-labelledby="review-share-title" onCancel={(event) => { if (lock.current) event.preventDefault(); else close(); }}>
+  return <dialog ref={dialog} className="review-share-dialog" aria-labelledby="review-share-title" onCancel={(event) => { event.preventDefault(); close(); }}>
     <div className="review-share-scroll">
       <header className="review-share-header">
         <div>
           <span className="review-share-eyebrow">SHARE THIS REVIEW</span>
           <h2 id="review-share-title">分享这篇记录</h2>
-          <p>先看摘录卡，再选择完整分页；原文始终保留，长内容会自动续页。</p>
+          <p>可选摘录卡、完整分页或公众号稿；原文始终保留。</p>
         </div>
         <button type="button" onClick={close} disabled={busy} aria-label="关闭分享预览">关闭</button>
       </header>
 
       <fieldset className="review-share-fieldset" disabled={busy}>
         <legend>分享内容</legend>
-        <label><input type="radio" name="review-share-mode" checked={mode === "excerpt"} onChange={() => setMode("excerpt")} />摘录卡（默认）</label>
-        <label><input type="radio" name="review-share-mode" checked={mode === "pages"} onChange={() => setMode("pages")} />完整分页</label>
+        <label><input type="radio" name="review-share-mode" checked={mode === "excerpt"} onChange={() => { if (mode !== "publication" || canLeavePage()) setMode("excerpt"); }} />摘录卡（默认）</label>
+        <label><input type="radio" name="review-share-mode" checked={mode === "pages"} onChange={() => { if (mode !== "publication" || canLeavePage()) setMode("pages"); }} />完整分页</label>
+        <label><input type="radio" name="review-share-mode" checked={mode === "publication"} onChange={() => setMode("publication")} />公众号稿</label>
       </fieldset>
 
-      <fieldset className="review-share-fieldset" disabled={busy}>
+      {mode !== "publication" ? <><fieldset className="review-share-fieldset" disabled={busy}>
         <legend>图片主题</legend>
         <label><input type="radio" name="review-share-theme" checked={theme === "paper"} onChange={() => setTheme("paper")} />纸张浅色</label>
         <label><input type="radio" name="review-share-theme" checked={theme === "dark"} onChange={() => setTheme("dark")} />深色</label>
@@ -209,7 +215,7 @@ export default function ReviewShare({ entry, onClose }: ReviewShareProps) {
         ], [
           "hideContent", "隐藏正文",
         ]] as const).map(([key, label]) => <label key={key}><input type="checkbox" checked={privacy[key]} onChange={(event) => updatePrivacy(key, event.target.checked)} />{label}</label>)}
-      </fieldset>
+      </fieldset></> : null}
 
       {mode === "excerpt" ? <>
         <fieldset className="review-share-fieldset review-share-excerpt-controls" disabled={busy || privacy.hideContent}>
@@ -223,10 +229,11 @@ export default function ReviewShare({ entry, onClose }: ReviewShareProps) {
         <ReviewSharePreview entry={entry} imageUrl={card?.url ?? null} privacy={privacy} theme={theme} excerpt={excerpt} />
         <div className="review-share-actions">
           <button type="button" className="review-share-primary" onClick={() => void saveExcerpt()} disabled={!card || busy}>{busy ? "处理中…" : native ? "保存摘录卡" : "下载摘录卡"}</button>
+          {Capacitor.getPlatform() === "android" && <button type="button" onClick={() => void saveExcerpt(true)} disabled={!card || busy}>保存摘录卡图片</button>}
           <button type="button" onClick={() => void shareExcerpt()} disabled={!card || busy}>{Capacitor.getPlatform() === "electron" ? "打开导出文件夹" : "系统分享"}</button>
           <button type="button" onClick={() => void copyShareText()} disabled={busy}>复制分享文字</button>
         </div>
-      </> : <JournalExport year={entry.year} entries={[entry]} kind="works" review imageOptions={imageOptions} onClose={() => setMode("excerpt")} />}
+      </> : mode === "pages" ? <JournalExport year={entry.year} entries={[entry]} kind="works" review imageOptions={imageOptions} onClose={() => setMode("excerpt")} /> : <Suspense fallback={<p role="status">正在打开公众号稿…</p>}><EntryPublication key={entry.id} entry={entry} privacy={privacy} onBusyChange={value => { lock.current = value; setBusy(value); }} /></Suspense>}
 
       {status ? <p className="review-share-status" role="status" aria-live="polite">{status}</p> : null}
       {error ? <p className="review-share-error" role="alert">{error}</p> : null}

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ENTRY_TYPE_LABELS, ENTRY_TYPES, type ReviewEntry } from "../../mobile/src/types";
 import { formatDateOnly } from "../../mobile/src/format";
 import { store } from "../../mobile/src/store";
+import { ARCHIVE_BASES, DATE_BASIS_LABELS, countDated, entryDate, isArchiveBasis, type ArchiveBasis } from "../../mobile/src/dateBasis";
 
 function DesktopCover({ src, label, large = false }: { src: string | null; label: string; large?: boolean }) {
   return src ? (
@@ -160,29 +161,39 @@ export function ArchivePage() {
   const selectedId = params.get("entry") ?? "";
   const type = params.get("type") ?? "all";
   const year = params.get("year") ?? "all";
+  const basisParam = params.get("basis");
+  const basis: ArchiveBasis = isArchiveBasis(basisParam) ? basisParam : "recordedAt";
+  const yearOf = (entry: ReviewEntry) => entryDate(entry, basis)?.slice(0, 4) ?? String(entry.year);
   useLayoutEffect(() => {
     if (loading || !listRef.current) return;
     const list = listRef.current;
     const key = "codex-desktop-archive-scroll:v1";
     try {
       const saved = JSON.parse(sessionStorage.getItem(key) ?? "null");
-      if (saved?.query === query && saved.type === type && saved.year === year && Number.isFinite(saved.y) && saved.y >= 0) list.scrollTop = saved.y;
+      if (saved?.query === query && saved.type === type && saved.year === year && saved.basis === basis && Number.isFinite(saved.y) && saved.y >= 0) list.scrollTop = saved.y;
     } catch { /* Optional navigation position. */ }
     return () => {
       // ponytail: retain one archive list position; use a bounded map if separate filter histories are needed.
-      try { sessionStorage.setItem(key, JSON.stringify({ query, type, year, y: list.scrollTop })); } catch { /* Browsing remains available. */ }
+      try { sessionStorage.setItem(key, JSON.stringify({ query, type, year, basis, y: list.scrollTop })); } catch { /* Browsing remains available. */ }
     };
-  }, [loading, query, type, year]);
-  const years = useMemo(() => Array.from(new Set(entries.map((entry) => entry.year))).sort((a, b) => b - a), [entries]);
+  }, [loading, query, type, year, basis]);
+  const years = useMemo(() => Array.from(new Set(entries.map((entry) => yearOf(entry)))).sort((a, b) => b.localeCompare(a)), [entries, basis]);
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
     return entries.filter((entry) => {
       if (type !== "all" && entry.type !== type) return false;
-      if (year !== "all" && String(entry.year) !== year) return false;
+      if (year !== "all" && yearOf(entry) !== year) return false;
       if (!normalized) return true;
       return [entry.title, entry.content, entry.artistName, entry.albumName, entry.songName].some((value) => value?.toLocaleLowerCase().includes(normalized));
-    }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [entries, query, type, year]);
+    }).sort((a, b) => {
+      const left = entryDate(a, basis);
+      const right = entryDate(b, basis);
+      if (left && right) return right.localeCompare(left) || b.createdAt.localeCompare(a.createdAt);
+      if (left) return -1;
+      if (right) return 1;
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+  }, [entries, query, type, year, basis]);
   const selected = filtered.find((entry) => entry.id === selectedId) ?? filtered[0] ?? null;
 
   useEffect(() => {
@@ -212,7 +223,7 @@ export function ArchivePage() {
     <section className="desktop-page desktop-archive-page">
       <div className="desktop-archive-layout">
         <section ref={listRef} className="desktop-archive-list" aria-label="记录列表">
-          <div className="desktop-archive-heading"><div><span className="desktop-eyebrow">ARCHIVE</span><h2>全部记录</h2></div><span>{filtered.length} 条</span></div>
+          <div className="desktop-archive-heading"><div><span className="desktop-eyebrow">ARCHIVE</span><h2>全部记录</h2></div><span>{filtered.length} 条 · {DATE_BASIS_LABELS[basis]}口径 · 有日期 {countDated(filtered, basis)} 条</span></div>
           <form className="desktop-archive-search" onSubmit={submitSearch} role="search">
             <label htmlFor="desktop-archive-query">搜索记录</label>
             <input id="desktop-archive-query" value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="搜索标题、作品或正文" />
@@ -221,6 +232,7 @@ export function ArchivePage() {
           <div className="desktop-filter-row">
             <label>类型<select value={type} onChange={(event) => updateFilter("type", event.target.value)}><option value="all">全部类型</option>{ENTRY_TYPES.map((entryType) => <option key={entryType} value={entryType}>{ENTRY_TYPE_LABELS[entryType]}</option>)}</select></label>
             <label>年份<select value={year} onChange={(event) => updateFilter("year", event.target.value)}><option value="all">全部年份</option>{years.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+            <label>归档口径<select value={basis} onChange={(event) => updateFilter("basis", event.target.value)}>{ARCHIVE_BASES.map((value) => <option key={value} value={value}>{DATE_BASIS_LABELS[value]}</option>)}</select></label>
           </div>
           {error ? <p className="error" role="alert">{error}</p> : null}
           {loading ? <p className="desktop-muted">正在读取档案…</p> : filtered.length ? (

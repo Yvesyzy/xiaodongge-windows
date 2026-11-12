@@ -9,14 +9,16 @@ import { toAlbumFirstRecognition } from "./albumFirst";
 import { BACKUP_HEALTH_KEY, inspectBackup, parseBackupHealth, type BackupHealth, type BackupPreview } from "./backupHealth";
 import { assertStorageWritable, getRestoreState, storageGeneration } from "./codex_restoreState";
 import { findSimilarEntry } from "./entryDuplicate";
-import { excerpt, formatDate, formatDateOnly, monthLabel } from "./format";
+import { WheelDateField } from "./abu_WheelDateField";
+import { ARCHIVE_BASES, DATE_BASIS_LABELS, entryDate, isArchiveBasis, isNewRelease, type ArchiveBasis } from "./dateBasis";
+import { excerpt, formatDate, formatDateOnly, localDateOf, monthLabel } from "./format";
 import type { Insight } from "./insights";
 import { journalRating } from "./codex_yearbookModel";
 import { mergeMusicMetadata } from "./musicMetadata";
 import { groupMusicEntries, normalizeMusicIdentityText, sameAlbumIdentity, sameMusicIdentity } from "./musicIdentity";
 import { NowPlaying, supportsCurrentPlayback } from "./nativeNowPlaying";
 import { playbackCoverKey, preparePlaybackCover } from "./codex_playbackCover";
-import { NativeExport } from "./nativeExport";
+import { NativeExport, copyText, saveFile } from "./nativeExport";
 import { desktopPlugin } from "./codex_desktopBridge";
 import { parseSharedMusicPayload, rememberSharedMusic, SharedMusic } from "./nativeSharedMusic";
 import { applyAppleCatalogMatch, findAppleCatalogMatch, parseCatalogSearchResult, parseNowPlayingResult } from "./nowPlaying";
@@ -74,9 +76,11 @@ const DailyListeningNote = lazy(() => import("./ListeningYearbookView").then(mod
 const MonthlyListeningPage = lazy(() => import("./ListeningYearbookView").then(module => ({ default: module.MonthlyListeningPage })));
 const YearlyListeningPage = lazy(() => import("./ListeningYearbookView").then(module => ({ default: module.YearlyListeningPage })));
 const SimpleYearbookPage = lazy(() => import("./codex_YearbookPage"));
+const AnnualReportPage = lazy(() => import("./codex_AnnualReportPage"));
 const ReviewShare = lazy(() => import("./codex_ReviewShare"));
 const AlbumTimelinePage = lazy(() => import("./codex_AlbumTimeline"));
 const DiagnosticsPage = lazy(() => import("./codex_DiagnosticsPage"));
+const PublicationPage = lazy(() => import("./codex_PublicationPage"));
 // ponytail: 12 MiB is above the measured 11.14 MB gallery fixture; raise it only after repeating low-memory device tests.
 const MAX_OCR_IMAGE_BYTES = 12 * 1024 * 1024;
 
@@ -145,6 +149,7 @@ export default function App() {
           <Route path="/songs/detail" element={<AggregateDetail kind="song" />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/summary" element={<SimpleYearbookPage />} />
+          <Route path="/annual-report" element={<AnnualReportPage />} />
           <Route path="/summary/analysis" element={<YearlyListeningPage />} />
           <Route path="/summary/:year/:month" element={<MonthlyListeningPage />} />
           <Route path="/abstract-map" element={<AbstractMusicMapPage />} />
@@ -154,6 +159,7 @@ export default function App() {
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/diagnostics" element={<DiagnosticsPage />} />
           <Route path="/more" element={<MorePage />} />
+          <Route path="/publication" element={<PublicationPage />} />
         </Routes></Suspense>
       </main>
       {taskRoute ? null : (
@@ -219,20 +225,30 @@ function HomePage() {
   useEffect(() => {
     let active = true;
     void Promise.all([
-      store.recentEntries(3),
-      store.getYearStats(currentYear),
       store.listEntries(),
       store.listListeningMoments(),
       store.getStoredAppData(DAILY_RESURFACING_KEY),
-    ]).then(async ([recent, yearStats, allEntries, moments, savedState]) => {
-      const recentWithCovers = await Promise.all(recent.map(loadHomeCover));
+    ]).then(async ([allEntries, moments, savedState]) => {
+      if (!active) return;
+      const recent = [...allEntries].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3);
       const today = localDateKey();
       const resolved = resolveDailyResurfacing(allEntries, moments, today, parseDailyResurfacingState(savedState));
-      const nextState = JSON.stringify(resolved.state);
+      const shown = resolved.entry ? [...recent, resolved.entry] : recent;
+      const [covers, yearStats] = await Promise.all([
+        store.getEntryCovers(shown, allEntries), store.getYearStats(currentYear, allEntries),
+      ]);
       if (!active) return;
       assertStorageWritable(generation);
+      const nextResurfacing = resolved.entry ? { ...resolved.entry, coverDataUrl: covers[recent.length] } : null;
+      setEntries(recent.map((entry, index) => ({ ...entry, coverDataUrl: covers[index] })));
+      setStats(yearStats);
+      setHomeDrafts(listEntryDrafts(localStorage, allEntries));
+      setResurfacingEntry(nextResurfacing);
+      setResurfacingState(resolved.state);
+      setNowPlayingMatch(false);
+      const nextState = JSON.stringify(resolved.state);
       if (savedState !== nextState) await store.setStoredAppData(DAILY_RESURFACING_KEY, nextState);
-      const nextResurfacing = resolved.entry ? await loadHomeCover(resolved.entry) : null;
+      if (!active) return;
       let currentMatches = false;
       if (nextResurfacing && Capacitor.getPlatform() === "android") {
         try {
@@ -253,11 +269,6 @@ function HomePage() {
         }
       }
       if (!active) return;
-      setEntries(recentWithCovers);
-      setStats(yearStats);
-      setHomeDrafts(listEntryDrafts(localStorage, allEntries));
-      setResurfacingEntry(nextResurfacing);
-      setResurfacingState(resolved.state);
       setNowPlayingMatch(currentMatches);
     }).catch(() => {
       if (!active) return;
@@ -339,10 +350,6 @@ function HomePage() {
   );
 }
 
-async function loadHomeCover(entry: ReviewEntry): Promise<HomeEntry> {
-  return { ...entry, coverDataUrl: await loadEntryCover(entry) };
-}
-
 async function loadEntryCover(entry: ReviewEntry) {
   return store.getEntryCover(entry);
 }
@@ -383,32 +390,68 @@ function shortDate(value: string) {
 }
 
 function TimelinePage() {
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("basis");
+  const basis: ArchiveBasis = isArchiveBasis(requested) ? requested : "recordedAt";
   const [entries, setEntries] = useState<ReviewEntry[]>([]);
-  useEffect(() => void store.listEntries().then(setEntries), []);
+  const [moments, setMoments] = useState<ListeningMoment[]>([]);
+  useEffect(() => {
+    void Promise.all([store.listEntries(), store.listListeningMoments()]).then(([all, allMoments]) => { setEntries(all); setMoments(allMoments); });
+  }, []);
+  const dateOf = (entry: ReviewEntry) => {
+    const date = entryDate(entry, basis)?.replaceAll("-", ".") ?? "日期未填写";
+    if (basis !== "recordedAt") return date;
+    // 乐评记录时间包含首次正式保存与后续每一次追加收听。
+    const extra = moments.filter((moment) => moment.entryId === entry.id)
+      .map((moment) => localDateOf(moment.listenedAt)).filter((value): value is string => !!value).sort();
+    return extra.length ? `${date} · 追加 ${extra.length} 次，最近 ${extra[extra.length - 1].replaceAll("-", ".")}` : date;
+  };
   const groups = useMemo(() => {
-    const yearMap = new Map<number, Map<number | null, ReviewEntry[]>>();
+    const yearMap = new Map<number, Map<number, ReviewEntry[]>>();
+    const undated: ReviewEntry[] = [];
     for (const entry of entries) {
-      if (!yearMap.has(entry.year)) yearMap.set(entry.year, new Map());
-      const monthMap = yearMap.get(entry.year) as Map<number | null, ReviewEntry[]>;
-      monthMap.set(entry.month, [...(monthMap.get(entry.month) ?? []), entry]);
+      const date = entryDate(entry, basis);
+      if (!date) { undated.push(entry); continue; }
+      const year = Number(date.slice(0, 4));
+      const month = Number(date.slice(5, 7));
+      if (!yearMap.has(year)) yearMap.set(year, new Map());
+      const monthMap = yearMap.get(year) as Map<number, ReviewEntry[]>;
+      monthMap.set(month, [...(monthMap.get(month) ?? []), entry]);
     }
-    return Array.from(yearMap.entries());
-  }, [entries]);
-
+    for (const monthMap of yearMap.values()) {
+      for (const items of monthMap.values()) items.sort((a, b) => (entryDate(b, basis) ?? "").localeCompare(entryDate(a, basis) ?? ""));
+    }
+    const sorted = [...yearMap.entries()].sort((a, b) => b[0] - a[0])
+      .map(([year, monthMap]) => [year, [...monthMap.entries()].sort((a, b) => b[0] - a[0])] as const);
+    return { sorted, undated };
+  }, [entries, basis]);
+  const both = ARCHIVE_BASES.map((value) => ({ value, count: entries.filter((entry) => entryDate(entry, value) !== null).length }));
   return (
-    <Page title="时间轴" text="按年份和月份回看所有记录。">
-      {!groups.length ? <Empty text="暂无记录。" /> : null}
-      {groups.map(([year, monthMap]) => (
+    <Page title="时间轴" text="按发行时间或乐评记录时间回看所有记录，两种口径同时统计。">
+      <div className="basis-switch theme-choice" role="group" aria-label="归档口径">
+        {ARCHIVE_BASES.map((value) => (
+          <button key={value} type="button" aria-pressed={basis === value} onClick={() => { const next = new URLSearchParams(params); next.set("basis", value); setParams(next, { replace: true }); }}>
+            {value === "releaseDate" ? "按发行时间" : "按记录时间"}
+          </button>
+        ))}
+      </div>
+      <div className="stats-grid archive-basis-stats">
+        {both.map((item) => <div className={`stat-card${basis === item.value ? " active" : ""}`} key={item.value}><span>{DATE_BASIS_LABELS[item.value]}</span><strong>{item.count} 篇</strong></div>)}
+      </div>
+      <p className="hint">当前按{DATE_BASIS_LABELS[basis]}归档，日期精确到年月日；另一种口径同步统计，点上方按钮即可切换。缺少该日期的记录放在最后。</p>
+      {!groups.sorted.length && !groups.undated.length ? <Empty text="暂无记录。" /> : null}
+      {groups.sorted.map(([year, monthGroups]) => (
         <section key={year} className="year-block">
           <h2>{year}</h2>
-          {Array.from(monthMap.entries()).map(([month, items]) => (
-            <div key={`${year}-${month ?? "year"}`}>
+          {monthGroups.map(([month, items]) => (
+            <div key={`${year}-${month}`}>
               <h3>{monthLabel(month)}</h3>
-              <EntryList entries={items} showCovers />
+              <EntryList entries={items} showCovers dateOf={dateOf} />
             </div>
           ))}
         </section>
       ))}
+      {groups.undated.length ? <section className="year-block"><h2>未填写{DATE_BASIS_LABELS[basis]}</h2><EntryList entries={groups.undated} dateOf={() => null} /></section> : null}
     </Page>
   );
 }
@@ -1038,6 +1081,7 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
         ratingOriginality: multiDimension ? ratingOriginality : null,
         ratingResonance: multiDimension ? ratingResonance : null,
         compositeRatingLocked: multiDimension && meanRating === null && compositeLockedRef.current,
+        releaseDate: readPlainDate(form, "releaseDate"),
         firstListenedAt: readDate(form, "firstListenedAt"),
         listenedAt: readDate(form, "listenedAt"),
       };
@@ -1168,17 +1212,34 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
         </section>
 
 
-        <div className="form-grid">
-          <label>归档年份<input name="year" type="number" min="1" max="9999" defaultValue={source?.year ?? new Date().getFullYear()} required /></label>
-          <label>归档月份<input name="month" type="number" min="1" max="12" defaultValue={source?.month ?? ""} /></label>
-        </div>
-        <p className="hint">月报、年报按乐评首次正式保存的时间统计；归档年月和收听日期用于整理作品。</p>
+        <section className="date-triad">
+          <div className="date-triad-head">
+            <strong>三个日期</strong>
+            <small>发行日期与乐评记录时间用于归档整理；发行日期与首次收听时间用于月报年报。按发行日期还能自动识别今年新专辑。</small>
+          </div>
+          <div className="form-grid">
+            <WheelDateField name="releaseDate" label="专辑/歌曲发行日期" defaultValue={source?.releaseDate ?? source?.musicMetadata?.releaseDate?.slice(0, 10) ?? ""} allowClear />
+            <WheelDateField name="firstListenedAt" label="首次收听时间" defaultValue={source?.firstListenedAt ? new Date(source.firstListenedAt).toLocaleDateString("en-CA") : ""} allowClear />
+          </div>
+          <div className="recording-date-card">
+            <span>乐评记录时间</span>
+            <strong>{source ? formatDateOnly(source.createdAt) : "保存正式乐评时自动生成"}</strong>
+            <small>首次正式保存，以及之后每一次「再次听见」追加的收听记录；修改乐评不会改变首次记录日。</small>
+            {source ? <Link to={`/entries/${source.id}`}>查看这条乐评的全部收听记录 →</Link> : null}
+          </div>
+          <p className="hint">三种时间都精确到年月日。时间轴与月报年报页各有口径切换按钮，可随时换一种时间整理作品。</p>
+        </section>
+        <input type="hidden" name="year" defaultValue={source?.year ?? new Date().getFullYear()} />
+        <input type="hidden" name="month" defaultValue={source?.month ?? new Date().getMonth() + 1} />
         <label>专辑<input name="albumName" defaultValue={source?.albumName ?? ""} /></label>
         <label>歌曲<input name="songName" defaultValue={source?.songName ?? ""} /></label>
 
         {musicMetadata ? <MusicMetadataDetails metadata={musicMetadata} title="更多音乐信息" /> : null}
 
-        <label>收听日期<input name="listenedAt" type="date" defaultValue={source?.listenedAt ? new Date(source.listenedAt).toLocaleDateString("en-CA") : ""} /></label>
+        <details className="date-extras">
+          <summary>更多日期设置</summary>
+          <WheelDateField name="listenedAt" label="本次收听日期（用于重听对比）" defaultValue={source?.listenedAt ? new Date(source.listenedAt).toLocaleDateString("en-CA") : ""} allowClear />
+        </details>
         <GenrePicker
           selectedTags={selectedGenreTags}
           onToggleTag={toggleGenre}
@@ -1227,8 +1288,6 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
             <RatingSlider value={ratingResonance} modifier={null} onChange={setRatingResonance} name="ratingResonance" showModifier={false} label="共鸣" />
           </div>
         ) : null}
-        <label>首次收听时间<input name="firstListenedAt" type="date" defaultValue={source?.firstListenedAt ? new Date(source.firstListenedAt).toLocaleDateString("en-CA") : ""} /></label>
-
         </details>
         <div className={`draft-status${draftError ? " error-state" : ""}`}>
           <span role="status" aria-live="polite">{draftStatus}</span>
@@ -1612,9 +1671,11 @@ function EntryDetailPage() {
             <Meta label="共鸣" value={entry.ratingResonance !== null ? `${entry.ratingResonance}/10` : null} />
           </>
         ) : null}
-        <Meta label="首次收听" value={formatDateOnly(entry.firstListenedAt)} />
-        <Meta label="收听日期" value={formatDateOnly(entry.listenedAt)} />
-        <Meta label="首次正式保存" value={formatDate(entry.createdAt)} />
+        <Meta label="专辑/歌曲发行日期" value={entry.releaseDate ?? entry.musicMetadata?.releaseDate ?? null} />
+        {entry.releaseDate || entry.musicMetadata?.releaseDate ? <Meta label="专辑年代" value={isNewRelease(entry, new Date().getFullYear()) ? `${new Date().getFullYear()} 年新专辑` : "往年专辑"} /> : null}
+        <Meta label="首次收听时间" value={formatDateOnly(entry.firstListenedAt)} />
+        <Meta label="乐评记录时间" value={formatDate(entry.createdAt)} />
+        <Meta label="本次收听日期" value={formatDateOnly(entry.listenedAt)} />
         <Meta label="更新时间" value={formatDate(entry.updatedAt)} />
       </div>
       {entry.musicMetadata ? <MusicMetadataDetails metadata={entry.musicMetadata} title="完整音乐元数据" open /> : null}
@@ -1656,7 +1717,7 @@ function EntryDetailPage() {
 
         {showMomentForm ? (
           <form className="moment-form" ref={momentFormRef} onChange={() => setMomentDirty(true)} onSubmit={addMoment}>
-            <label>收听日期<input name="momentListenedAt" type="date" defaultValue={new Date().toLocaleDateString("en-CA")} /></label>
+            <WheelDateField name="momentListenedAt" label="收听日期" defaultValue={new Date().toLocaleDateString("en-CA")} allowClear />
             <div className="moment-form-row">
               <label>评分<input name="momentRating" type="number" min="0.5" max="10" step="0.5" placeholder="0.5-10" /></label>
               <label>修饰符<select name="momentRatingModifier" defaultValue=""><option value="">无</option><option value="+">+</option><option value="-">-</option></select></label>
@@ -2122,6 +2183,7 @@ function publishBackupResult(text: string, error = false) {
 }
 
 function BackupPage() {
+  const restoreAvailable = typeof navigator.locks?.request === "function";
   const [exported, setExported] = useState<ExportedData | null>(null);
   const [includeCovers, setIncludeCovers] = useState(true);
   const [skipCovers, setSkipCovers] = useState(false);
@@ -2245,7 +2307,7 @@ function BackupPage() {
     setExportStatus({ tone: "success", text: Capacitor.isNativePlatform() ? "正在打开系统文件选择器……" : "正在保存文件……" });
     try {
       if (Capacitor.isNativePlatform()) {
-        const result = await NativeExport.saveFile(exported);
+        const result = await saveFile(exported);
         if (result.status === "cancelled") {
           setExportStatus({ tone: "success", text: "已取消保存" });
           return;
@@ -2301,8 +2363,7 @@ function BackupPage() {
     setExportAction("copy");
     setExportStatus({ tone: "success", text: "正在复制内容……" });
     try {
-      if (Capacitor.isNativePlatform()) await NativeExport.copyText({ text: exported.content });
-      else await copyText(exported.content);
+      await copyText(exported.content);
       setExportStatus({ tone: "success", text: `${EXPORT_LABELS[exported.kind]} 内容已复制` });
     } catch (err) {
       setExportStatus({ tone: "error", text: err instanceof Error ? `复制失败：${err.message}` : "复制失败，请重试" });
@@ -2335,6 +2396,7 @@ function BackupPage() {
 
   async function rehearseImport() {
     if (busy || !preview) return;
+    if (!restoreAvailable) { setError("当前环境不支持安全恢复，请先更新系统网页组件。现有数据仍可查看和导出。"); return; }
     setBusy(true);
     setError("");
     setMessage("");
@@ -2389,6 +2451,7 @@ function BackupPage() {
   async function importData(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
+    if (!restoreAvailable) { setError("当前环境不支持安全恢复，已保留现有数据。"); return; }
     if (!restoreRehearsal) { setError("请先完成隔离恢复预演"); return; }
     let nextPreview: BackupPreview;
     try {
@@ -2490,7 +2553,8 @@ function BackupPage() {
         <section className="form-card">
           <strong>导出的 {EXPORT_LABELS[exported.kind]}</strong>
           <p className="hint">{exported.fileName}</p>
-          <textarea readOnly rows={10} value={exported.content} />
+          <textarea aria-label="导出原文" readOnly rows={10} value={exported.content} />
+          <p className="hint">保存或复制不可用时，原文仍保留在这里，可长按选择。</p>
           <div className="export-output-actions native-export-actions">
             <button className="primary-button" type="button" onClick={saveExportFile} disabled={exportAction !== null}>保存到文件夹</button>
             <button className="secondary-button" type="button" onClick={shareExportFile} disabled={exportAction !== null}>{Capacitor.getPlatform() === "electron" ? "打开导出文件夹" : "系统分享"}</button>
@@ -2507,7 +2571,7 @@ function BackupPage() {
         <section className="form-card">
           <strong>可撤销的导入</strong>
           <p className="hint">导入前快照：{undoPreview.entryCount} 条记录、{undoPreview.summaryCount} 个年度总结、{undoPreview.monthlySummaryCount} 个月度作品、{undoPreview.coverCount} 张封面；{draftImportImpact(undoPreview)}导出时间：{formatDate(undoPreview.exportedAt)}</p>
-          <button className="secondary-button" type="button" onClick={undoImport} disabled={busy}>{busy ? "处理中" : "撤销上次导入"}</button>
+          <button className="secondary-button" type="button" onClick={undoImport} disabled={busy || !restoreAvailable}>{busy ? "处理中" : "撤销上次导入"}</button>
         </section>
       ) : null}
       <form className="form-card" onSubmit={importData}>
@@ -2517,15 +2581,17 @@ function BackupPage() {
         </div>
         <label className="secondary-button file-input-button">
           选择 JSON 文件
-          <input type="file" accept="application/json,.json" disabled={busy} onChange={chooseImportFile} />
+          <input type="file" accept="*/*" disabled={busy} onChange={chooseImportFile} />
         </label>
+        <p className="hint">请选择 JSON 备份；文件内容仍会严格校验。也可直接粘贴下方。</p>
+        {!restoreAvailable && <p role="alert">当前环境不支持安全恢复，预演、导入和撤销暂不可用；现有数据仍可查看、导出或复制，请先更新系统网页组件后重试。</p>}
         <label>
           粘贴备份 JSON
           <textarea rows={10} value={importText} disabled={busy} onChange={(event) => changeImportText(event.target.value)} />
         </label>
         {preview ? <p className="hint">格式校验通过；备份内容（v{preview.sourceVersion}）：{preview.entryCount} 条记录、{preview.summaryCount} 个年度总结、{preview.monthlySummaryCount} 个月度作品、{preview.coverCount} 张封面；{draftImportImpact(preview)}导出时间：{formatDate(preview.exportedAt)}</p> : null}
         {skipCovers ? <p className="hint">本次不导入备份中的封面；当前封面保留。</p> : null}
-        <button className="secondary-button" type="button" onClick={() => void rehearseImport()} disabled={busy || !preview}>{busy ? "预演中" : "预演恢复并查看差异"}</button>
+        <button className="secondary-button" type="button" onClick={() => void rehearseImport()} disabled={busy || !preview || !restoreAvailable}>{busy ? "预演中" : "预演恢复并查看差异"}</button>
         {restoreRehearsal ? (
           <section className="backup-diff-report" aria-label="恢复差异报告">
             <strong>{restoreRehearsal.target === "windows-isolated-sqlite" ? "Windows 隔离数据库恢复与回读通过" : restoreRehearsal.target === "android-isolated-sqlite" ? "Android 隔离数据库恢复与回读通过" : "Web 隔离存储模拟恢复与回读通过"}</strong>
@@ -2539,7 +2605,7 @@ function BackupPage() {
             })}</ul>
           </section>
         ) : null}
-        <button className="danger-button" type="submit" disabled={busy || !restoreRehearsal}>{busy ? "导入中" : "导入并覆盖当前数据"}</button>
+        <button className="danger-button" type="submit" disabled={busy || !restoreRehearsal || !restoreAvailable}>{busy ? "导入中" : "导入并覆盖当前数据"}</button>
       </form>
       {message ? <p className="hint">{message}</p> : null}
       {error ? <p className="error">{error}</p> : null}
@@ -2575,7 +2641,9 @@ function MorePage() {
   }, []);
 
   const items = [
-    ["/timeline", "时间轴", "按时间查看所有听感记录。"],
+    ["/publication", "公众号出稿", "选择原文，预览编辑，复制排版或导出稿件与配图。"],
+    ["/timeline", "时间轴", "按发行时间或乐评记录时间归档，两种口径可切换。"],
+    ["/annual-report", "年度报告", "只看今年发行的新专辑，含年度前十五专辑；与年度总结分开。"],
     ["/abstract-map", "抽象地图", "按情绪把记录放进听歌大陆。"],
     ["/insights", "情绪洞察", "按天气和季节看你的听歌偏好。"],
     ["/albums", "专辑", "按专辑名称聚合记录。"],
@@ -2963,7 +3031,7 @@ async function downloadRawDraft(draft: Pick<EntryDraftMeta, "key" | "raw">) {
   const fileName = `xiaodongge-draft-${safeKey}.json`;
   const mimeType = "application/json;charset=utf-8";
   if (Capacitor.isNativePlatform()) {
-    const result = await NativeExport.saveFile({ fileName, mimeType, content: draft.raw });
+    const result = await saveFile({ fileName, mimeType, content: draft.raw });
     return result.status === "saved" ? "草稿原文已保存" : "已取消保存，草稿原文仍保留";
   }
   downloadExportFile(new File([draft.raw], fileName, { type: mimeType }));
@@ -3011,9 +3079,9 @@ function SectionTitle({ title }: { title: string }) {
   return <h2 className="section-title">{title}</h2>;
 }
 
-function EntryList({ entries, emptyText = "暂无记录。", showCovers = false }: { entries: ReviewEntry[]; emptyText?: string; showCovers?: boolean }) {
+function EntryList({ entries, emptyText = "暂无记录。", showCovers = false, dateOf }: { entries: ReviewEntry[]; emptyText?: string; showCovers?: boolean; dateOf?: (entry: ReviewEntry) => string | null }) {
   if (!entries.length) return <Empty text={emptyText} />;
-  return <div className="card-list">{entries.map((entry) => <div key={entry.id} className={`codex-entry-list-item${showCovers && (entry.type === "album" || entry.type === "song") ? " codex-timeline-card" : ""}`}>{showCovers && (entry.type === "album" || entry.type === "song") && <TimelineCover entry={entry} />}<Link to={`/entries/${entry.id}`} className="entry-card"><span>{ENTRY_TYPE_LABELS[entry.type]} / {entry.year} / {monthLabel(entry.month)}</span><h2>{entry.title}</h2><p>{[entry.songName, entry.albumName, entry.artistName].filter(Boolean).join(" / ") || "未关联音乐信息"}</p><p>{excerpt(entry.content)}</p></Link><EntryShareMenu entry={entry} /></div>)}</div>;
+  return <div className="card-list">{entries.map((entry) => <div key={entry.id} className={`codex-entry-list-item${showCovers && (entry.type === "album" || entry.type === "song") ? " codex-timeline-card" : ""}`}>{showCovers && (entry.type === "album" || entry.type === "song") && <TimelineCover entry={entry} />}<Link to={`/entries/${entry.id}`} className="entry-card"><span>{dateOf ? `${ENTRY_TYPE_LABELS[entry.type]} / ${dateOf(entry) ?? "日期未填写"}${isNewRelease(entry, new Date().getFullYear()) ? " · 今年新专辑" : ""}` : `${ENTRY_TYPE_LABELS[entry.type]} / ${entry.year} / ${monthLabel(entry.month)}`}</span><h2>{entry.title}</h2><p>{[entry.songName, entry.albumName, entry.artistName].filter(Boolean).join(" / ") || "未关联音乐信息"}</p><p>{excerpt(entry.content)}</p></Link><EntryShareMenu entry={entry} /></div>)}</div>;
 }
 
 function TimelineCover({ entry }: { entry: ReviewEntry }) {
@@ -3086,7 +3154,9 @@ function PrivacyPage() {
     <Page title="隐私说明" text="当前播放、天气背景与本地听感分析的数据使用方式。">
       <article className="content-card privacy-copy">
         <h2>本地保存</h2>
-        <p>音乐记录、正文、标签、情绪、评分、封面、草稿和听感总结保存在本机。除下述明确说明的音乐目录与天气请求外，小懂哥不会主动上传这些内容。</p>
+        <p>音乐记录、正文、标签、情绪、评分、封面、草稿和听感总结保存在本机。除下述明确说明的音乐目录与天气请求外，记录不会向外部服务发送。</p>
+        <h2>好友圈</h2>
+        <p>Windows 桌面版不提供好友圈与账号功能，所有音乐记录只保存在本机。</p>
         <h2>{desktop ? "Windows 媒体会话" : "通知使用权"}</h2>
         <p>{desktop ? "Windows 版读取兼容播放器公开的系统媒体会话，只读取正在播放的作品信息，无需 Android 通知使用权；暂停的媒体会话不会作为当前播放。" : "Android 通知使用权仅用于访问系统媒体会话中的当前播放信息。应用不保存其他应用的通知正文，也不读取暂停的媒体会话。"}</p>
         {desktop ? <><h2>截图识别</h2><p>选择的截图通过本机 Windows OCR 识别，识别后需确认再应用到表单，截图不会上传。识别语言取决于本机安装的 OCR 语言包。</p></> : null}
@@ -3186,6 +3256,7 @@ function readDraftFields(form: HTMLFormElement): EntryDraftFields {
     artistName: value("artistName"),
     listenedAt: value("listenedAt"),
     firstListenedAt: value("firstListenedAt"),
+    releaseDate: value("releaseDate"),
     tags: value("tags"),
     rating: value("rating"),
     ratingModifier: value("ratingModifier"),
@@ -3218,25 +3289,6 @@ function fillRecognizedFields(form: HTMLFormElement | null, fields: MusicInfoFie
   changed += setRecognizedField(form, "title", fields.title ?? fields.songName ?? fields.albumName, onlyEmpty);
   changed += setRecognizedField(form, "content", fields.content, onlyEmpty);
   return changed;
-}
-
-async function copyText(text: string) {
-  // ponytail: Capacitor WebView 的 Clipboard API 可能被权限策略拒绝，保留同步 DOM 回退。
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-  } catch { /* fall through */ }
-  const input = document.createElement("textarea");
-  input.value = text;
-  input.style.position = "fixed";
-  input.style.left = "-9999px";
-  document.body.appendChild(input);
-  input.select();
-  const copied = document.execCommand("copy");
-  input.remove();
-  if (!copied) throw new Error("复制失败");
 }
 
 function prefersAlbumEntry(form: HTMLFormElement | null, mode: "create" | "edit") {
@@ -3309,8 +3361,14 @@ function readNumber(form: FormData, key: string) {
 
 function readDate(form: FormData, key: string) {
   const value = readText(form, key);
-  // ponytail: <input type="date"> 返回 YYYY-MM-DD，用本地时间构造避免 UTC 偏移
+  // ponytail: 滚轮选择与手填都返回 YYYY-MM-DD，用本地时间构造 ISO 避免 UTC 偏移
   return value ? new Date(value + "T00:00:00").toISOString() : null;
+}
+
+// 发行日期是纯本地年月日，不转 ISO，避免 UTC+8 落到前一天。
+function readPlainDate(form: FormData, key: string) {
+  const value = readText(form, key);
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
 async function fileToCoverDataUrl(file: File) {

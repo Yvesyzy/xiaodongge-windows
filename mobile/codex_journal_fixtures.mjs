@@ -1,4 +1,5 @@
 // Explicit demo data for the local prototype and browser regression only. Never imported by the production app.
+// firstListenedAt tracks createdAt so the two report date bases keep the historical month/year assertions valid.
 export function makeJournalFixtures(scenario = '6') {
   const names = ['慢行', '晴天后的房间', '低速飞行', '城市边缘', '晚风经过', '小岛来信'];
   const months = scenario === '128' ? [12, 14, 15, 11, 18, 16, 17, 20, 5] : scenario === '45' ? [0, 0, 0, 0, 45] : scenario === '0' ? [] : scenario === '1' ? [0, 0, 0, 0, 1] : [0, 0, 0, 0, 2, 1, 1, 2];
@@ -14,7 +15,7 @@ export function makeJournalFixtures(scenario = '6') {
         tags: ['编曲', '器乐', '留白'], moods: ['平静'], rating: i % 4 === 0 ? null : 7.5,
         ratingModifier: null, ratingProduction: null, ratingSongwriting: null, ratingOriginality: null, ratingResonance: null, compositeRatingLocked: false,
         ratingLyrics: null, ratingComposition: null, ratingVocals: null,
-        firstListenedAt: '2020-01-01T00:00:00.000Z', listenedAt: '2025-12-01T00:00:00.000Z', createdAt, updatedAt: createdAt });
+        firstListenedAt: createdAt, listenedAt: '2025-12-01T00:00:00.000Z', createdAt, updatedAt: createdAt });
     }
   });
   if (scenario === 'long') {

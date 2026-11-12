@@ -26,6 +26,8 @@ const AlbumTimelinePage = lazy(() => import("../../mobile/src/codex_AlbumTimelin
 const DiagnosticsPage = lazy(() => import("../../mobile/src/codex_DiagnosticsPage"));
 const MonthlyListeningPage = lazy(() => import("../../mobile/src/ListeningYearbookView").then((module) => ({ default: module.MonthlyListeningPage })));
 const YearlyListeningPage = lazy(() => import("../../mobile/src/ListeningYearbookView").then((module) => ({ default: module.YearlyListeningPage })));
+const PublicationPage = lazy(() => import("../../mobile/src/codex_PublicationPage"));
+const AnnualReportPage = lazy(() => import("../../mobile/src/codex_AnnualReportPage"));
 
 const sidebarGroups: Array<{ label: string; items: Array<{ to: string; label: string; icon: string }> }> = [
   {
@@ -37,6 +39,13 @@ const sidebarGroups: Array<{ label: string; items: Array<{ to: string; label: st
       { to: "/songs", label: "歌曲", icon: "song" },
       { to: "/drafts", label: "草稿箱", icon: "draft" },
       { to: "/summary", label: "回顾", icon: "recap" },
+    ],
+  },
+  {
+    label: "出稿与报告",
+    items: [
+      { to: "/publication", label: "公众号出稿", icon: "draft" },
+      { to: "/annual-report", label: "年度报告", icon: "recap" },
     ],
   },
 ];
@@ -148,6 +157,8 @@ function RoutedPages() {
         <Route path="/summary" element={<YearbookPage />} />
         <Route path="/summary/analysis" element={<YearlyListeningPage />} />
         <Route path="/summary/:year/:month" element={<MonthlyListeningPage />} />
+        <Route path="/annual-report" element={<AnnualReportPage />} />
+        <Route path="/publication" element={<PublicationPage />} />
         <Route path="/abstract-map" element={<AbstractMusicMapPage />} />
         <Route path="/insights" element={<InsightsPage />} />
         <Route path="/backup" element={<BackupPage />} />

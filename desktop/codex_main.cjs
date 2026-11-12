@@ -69,7 +69,7 @@ function exportData(options) {
   const fileName = text(options?.fileName, '文件名', 180);
   if (!fileName || /[<>:"/\\|?*\u0000-\u001f]/.test(fileName) || /[. ]$/.test(fileName)
     || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(fileName)
-    || !['.json', '.txt', '.csv', '.png'].includes(path.extname(fileName).toLowerCase())) {
+    || !['.json', '.txt', '.csv', '.png', '.md'].includes(path.extname(fileName).toLowerCase())) {
     throw new Error('导出文件名无效');
   }
   const content = text(options.content, '文件内容', MAX_EXPORT_BYTES * 2);
@@ -202,6 +202,7 @@ const exportsPlugin = {
   stageFile, saveFile, saveFiles, shareFiles,
   shareFile: async options => shareFiles({ tokens: [(await stageFile(options)).token] }),
   copyText: options => { clipboard.writeText(text(options?.text, '复制内容')); },
+  saveImageToGallery: saveFile,
 };
 const playingPlugin = {
   getCurrentTrack: async options => enrichWindowsTrack(await native('nowPlaying', undefined, options?.includeArtwork === true)),

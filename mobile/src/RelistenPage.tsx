@@ -2,11 +2,12 @@ import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from 
 import { Capacitor } from "@capacitor/core";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { MOOD_TAGS } from "../../shared/moods";
+import { WheelDateField } from "./abu_WheelDateField";
 import { formatDateOnly } from "./format";
 import { compareRelisten } from "./relistenComparison";
 import RatingSlider from "./RatingSlider";
 import { blobToBase64, buildRelistenMemoryCard, DEFAULT_PRIVACY, downloadBlob, renderMemoryCard, type MemoryCardPrivacy } from "./shareCard";
-import { NativeExport } from "./nativeExport";
+import { NativeExport, saveFile } from "./nativeExport";
 import { store } from "./store";
 import { useBackGuard } from "./codex_Navigation";
 import type { ListeningMoment, RatingModifier, ReviewEntry } from "./types";
@@ -148,7 +149,7 @@ export default function RelistenPage() {
       const blob = await renderMemoryCard(buildRelistenMemoryCard(entry, moment, comparison, privacy), coverUrl);
       const fileName = relistenFileName(moment.id);
       if (Capacitor.isNativePlatform()) {
-        const result = await NativeExport.saveFile({ fileName, mimeType: "image/png", encoding: "base64", content: await blobToBase64(blob) });
+        const result = await saveFile({ fileName, mimeType: "image/png", encoding: "base64", content: await blobToBase64(blob) });
         setMessage(result.status === "cancelled" ? "已取消保存重听对比卡" : `已保存重听对比卡：${fileName}`);
       } else {
         downloadBlob(blob, fileName);
@@ -256,7 +257,7 @@ export default function RelistenPage() {
           <div className="quick-mood-all">{MOOD_TAGS.map((mood) => <button type="button" key={mood} className={moods.includes(mood) ? "selected" : ""} onClick={() => toggleMood(mood)}>{mood}</button>)}</div>
         </fieldset>
         <label>一句话感受<textarea rows={5} value={content} onChange={(event) => { setDirty(true); setContent(event.target.value); }} placeholder="不要看过去，现在的你听见了什么？" required /></label>
-        <label>收听日期<input type="date" value={listenedOn} onChange={(event) => { setDirty(true); setListenedOn(event.target.value); }} required /></label>
+        <WheelDateField name="listenedOn" label="收听日期" value={listenedOn} onChange={(next) => { setDirty(true); setListenedOn(next); }} required />
         {message ? <p className="hint" role="status">{message}</p> : null}
         {error ? <p className="error">{error}</p> : null}
         <button className="primary-button full" disabled={saving}>{saving ? "保存中" : "保存并揭晓"}</button>
