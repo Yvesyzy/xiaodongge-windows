@@ -147,7 +147,7 @@ npm.cmd run windows:installer -- -CertificateThumbprint '证书的完整40位十
 npm.cmd run windows:check
 ```
 
-该脚本在 `release/` 内创建独立 profile 和合成记录，不读取正式个人档案。覆盖 SQLite、草稿、备份预演/恢复/回滚/撤销、原生导出、OCR 和深浅主题布局。将 `release/codex_windows_latest.json` 中 `executable` 的实际路径作为参数传给 `windows:check`，还会检查便携目录搬移及离线冷启动、保存与导出。
+该脚本在 `release/` 内创建独立 profile 和合成记录，不读取正式个人档案。覆盖 SQLite、草稿、备份预演/恢复/回滚/撤销、原生导出、OCR 和深浅主题布局。将便携 ZIP 解压后 `codex_xiaodongge.exe` 的实际路径作为参数传给 `windows:check`，还会检查便携目录搬移及离线冷启动、保存与导出。
 
 `npm.cmd test` 包含共享备份／分析规则、日期口径、公众号出稿模型、Windows SQLite 和网易云队列补全的单元测试。**单测需要 Node.js 24 或以上**：`desktop/codex_sqlite.cjs` 使用 `DatabaseSync.setAuthorizer`，在 Node 22 下对应的 6 项会因 API 缺失失败，其余用例仍可通过。本机若默认 Node 版本较低，可显式用 Node 24 的可执行文件运行 `node --test <文件列表>`。真实网易云播放检查使用 `node scripts/codex_check_windows_playback.mjs`；运行前保持网易云播放，该检查会暂停并恢复播放。
 
