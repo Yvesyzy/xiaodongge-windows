@@ -132,10 +132,10 @@ $compilerArgs += @("/DCODEX_SOURCE=$payload", (Join-Path $PSScriptRoot 'codex_wi
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
 $setup = Join-Path $output "$name.exe"
 if (-not $AllowUnsigned) {
+    # When the .iss has SignTool configured, Inno Setup signs the uninstaller on the fly.
+    # SignedUninstallerDir only receives a copy in the external/manual signing flow.
+    # The installed unins000.exe signature is verified by codex_check_windows_installer.ps1.
     Assert-Signature $setup
-    $uninstallers = @(Get-ChildItem -LiteralPath (Join-Path $output 'codex_signed_uninstaller') -File)
-    if (-not $uninstallers.Count) { throw 'Signed uninstaller was not produced.' }
-    foreach ($uninstaller in $uninstallers) { Assert-Signature $uninstaller.FullName }
 }
 $sha256 = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
 Set-Content -LiteralPath "$setup.sha256.txt" -Value "$sha256  $name.exe" -Encoding utf8

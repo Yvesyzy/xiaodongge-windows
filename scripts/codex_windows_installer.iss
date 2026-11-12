@@ -25,7 +25,6 @@ RestartApplications=no
 #ifdef CODEX_SIGNED
 SignTool=codex_windows_sign
 SignedUninstaller=yes
-SignedUninstallerDir={#CODEX_OUTPUT}\codex_signed_uninstaller
 #else
 SignedUninstaller=no
 #endif

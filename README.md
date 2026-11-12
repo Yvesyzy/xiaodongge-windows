@@ -16,7 +16,7 @@
 
 已公开发布版本 **3.5.1**，提供 Windows x64 安装包与便携 ZIP，面向 Windows 10 / 11；实际验收系统为 Windows 11 x64。本版与手机端 v3.5.1 功能对齐，并纳入此前未正式发布的 3.2.0 / 3.2.1 系统播放封面改动。3.1.1 及更早版本可直接覆盖升级，个人档案、封面、草稿与阅读设置保留。
 
-推荐在 [Releases](https://github.com/Yvesyzy/xiaodongge-windows/releases) 下载文件名包含 `setup_unsigned` 的 `.exe` 及同名 `.exe.sha256.txt`。安装器默认装到当前用户的 `%LOCALAPPDATA%\Programs\xiaodongge-windows`，提供开始菜单入口和可选桌面快捷方式，无需管理员权限。安装后从开始菜单打开「小懂哥」。
+推荐在 [Releases](https://github.com/Yvesyzy/xiaodongge-windows/releases) 下载文件名包含 `setup_signed` 的 `.exe` 及同名 `.exe.sha256.txt`。安装器默认装到当前用户的 `%LOCALAPPDATA%\Programs\xiaodongge-windows`，提供开始菜单入口和可选桌面快捷方式，无需管理员权限。安装后从开始菜单打开「小懂哥」。
 
 如需便携运行：
 
@@ -24,7 +24,7 @@
 2. 将 ZIP **完整解压**到自己的应用目录。
 3. 双击 `codex_xiaodongge.exe`。同目录的 DLL、`locales` 和 `resources` 必须保留。
 
-运行发行包不需要安装 Node.js、npm 或数据库。**当前安装包和便携包均未签名**，正式代码签名仍需发布者证书；暂无自动更新。
+运行发行包不需要安装 Node.js、npm 或数据库。**安装器已用 Yves 本机创建的自签名开发证书签名，便携 ZIP 仍未签名**。该证书不是受信任 CA 签发，仅在已导入其根证书的本机验证为有效；其他 Windows 机器会提示证书不受信任。正式发布者证书尚未取得，暂无自动更新。
 
 在 ZIP 所在目录用 PowerShell 验证下载完整性：
 
@@ -131,15 +131,15 @@ Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert | Select-Object Subject, Thu
 npm.cmd run windows:installer -- -CertificateThumbprint '证书的完整40位十六进制指纹'
 ```
 
-机器证书存储可额外传 `-CertificateStore LocalMachine`；工具不在默认安装位置时，可指定 `-CompilerPath` 和 `-SignToolPath`。签名流程使用 SHA-256 与 RFC 3161 时间戳，并校验程序、安装器和卸载器的可信签名、指定指纹及时间戳。缺少证书或校验失败时停止，不自动降级为未签名包。本次尚无发布者证书，真实证书签名流程未执行。
+机器证书存储可额外传 `-CertificateStore LocalMachine`；工具不在默认安装位置时，可指定 `-CompilerPath` 和 `-SignToolPath`。签名流程使用 SHA-256 与 RFC 3161 时间戳，并校验程序、安装器和卸载器的可信签名、指定指纹及时间戳。缺少证书或校验失败时停止，不自动降级为未签名包。2026-11-12 已用自签名开发证书走通完整签名流程（含 RFC 3161 时间戳与安装后卸载器验签）；该证书仅本机可信，不能替代受信任 CA 签发的发布者证书。
 
 产物位于 `release/` 中的新目录，包含安装器、SHA-256、清单及构建暂存目录；最新正式构建记录为 `codex_windows_installer_latest.json`。方案见 [安装包设计与验收范围](docs/codex_windows_installer_design.md)。
 
 ### Code signing policy
 
-正在准备 [SignPath Foundation](https://signpath.org/apply) 免费开源签名申请，尚未获批或取得证书；当前发行包仍未签名。[Code signing policy](docs/codex_code_signing_policy.md) 记录审批责任、签名范围与待满足条件。
+[SignPath Foundation](https://signpath.org/apply) 免费开源签名申请按此前决定保持暂停，尚未获批。2026-11-12 已创建自签名开发证书用于验证签名链路，其信任边界与签名范围见下。[Code signing policy](docs/codex_code_signing_policy.md) 记录审批责任、签名范围、信任边界与待满足条件。
 
-[Windows build](https://github.com/Yvesyzy/xiaodongge-windows/actions/workflows/codex_windows_build.yml) 可手动运行 GitHub 托管构建，生成未签名安装包、便携包、校验文件和清单；构建不会自动发布。它复用上述脚本，检查类型与单元测试，并固定 Action 提交及 Inno Setup 安装程序摘要。云端构建不代替本机媒体会话、OCR 或安装升级回归验收。
+[Windows build](https://github.com/Yvesyzy/xiaodongge-windows/actions/workflows/codex_windows_build.yml) 可手动运行 GitHub 托管构建，生成便携包、未签名安装器、校验文件和清单（云端无签名证书）；构建不会自动发布。它复用上述脚本，检查类型与单元测试，并固定 Action 提交及 Inno Setup 安装程序摘要。云端构建不代替本机媒体会话、OCR 或安装升级回归验收。
 
 ## 验证
 

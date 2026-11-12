@@ -23,11 +23,11 @@
 da80511ccea5b15c33363aa3ec930be073f964fece727c5887ab6ba77e8484a4  codex_xiaodongge_windows_3.5.1_x64_20261112_011828.zip
 ```
 
-- [每用户安装器（未签名）](https://github.com/Yvesyzy/xiaodongge-windows/releases/download/v3.5.1/codex_xiaodongge_windows_3.5.1_x64_setup_unsigned_20261112_012301_795.exe) — 122,536,618 字节
-- [安装器 SHA-256](https://github.com/Yvesyzy/xiaodongge-windows/releases/download/v3.5.1/codex_xiaodongge_windows_3.5.1_x64_setup_unsigned_20261112_012301_795.exe.sha256.txt)
+- [每用户安装器（自签名开发证书）](https://github.com/Yvesyzy/xiaodongge-windows/releases/download/v3.5.1/codex_xiaodongge_windows_3.5.1_x64_setup_signed_20261112_021038_951.exe) — 122,547,664 字节
+- [安装器 SHA-256](https://github.com/Yvesyzy/xiaodongge-windows/releases/download/v3.5.1/codex_xiaodongge_windows_3.5.1_x64_setup_signed_20261112_021038_951.exe.sha256.txt)
 
 ```
-7d01bed65e01ca25c6e72cd1da92847c2c8b0091808c228fe1088e161a26dd38  codex_xiaodongge_windows_3.5.1_x64_setup_unsigned_20261112_012301_795.exe
+0e22a783a2f97c9e2479b82c1c1ec2ed3dbbbc93216905b08c0301eb8e761f85  codex_xiaodongge_windows_3.5.1_x64_setup_signed_20261112_021038_951.exe
 ```
 
 在下载目录用 PowerShell 核对：
@@ -56,13 +56,14 @@ Get-Content -Path '*.zip.sha256.txt'
 - 真实 Electron 端到端回归 **18 组 + 12 组深浅主题布局全部通过，0 页面错误**：原生 SQLite 启动、六项评分与 v6 导出、保存取消与原子写、批量保存冲突、草稿持久化与重启恢复、隔离内存库恢复预演、v1–v6 导入与撤销、故障回滚、原生恢复日志、月报／年度标本册生成、离线冷启动与便携目录搬移。
 - 修复一处移植缺陷：恢复预演的 `INSERT INTO ReviewEntry` 原为 26 列，与新增 `releaseDate` 后的 27 个绑定值不一致，会报 `column index out of range`；现已补齐列与占位符，回归通过。
 - 验收合成夹具的 `firstListenedAt` 与记录时间对齐，使双口径月报／年报下的既有月份断言继续有效。
+- 签名链路：`signtool.exe` 对主程序与安装器签名并加盖 RFC 3161 时间戳，`Assert-Signature` 验证 `Status=Valid`、指纹一致与时间戳存在；签名版独立身份回归再次验证安装后的主程序与 `unins000.exe` 签名。
 
-安装器脚本本次未改动（仅由 `package.json` 注入版本号）。已用 `-TestIdentity` 独立身份构建并跑完安装／覆盖升级／卸载三段回归，**4 组全部通过**：每用户安装与 104 个安装文件哈希；安装后 Electron 启动并写入合成 SQLite 与 Chromium 数据；同身份覆盖升级复用安装位置，数据与用户自建文件哈希不变；卸载清除程序、登记与快捷方式，保留个人档案。证据 `release/codex_installer_qa_20261112_014732_306/codex_installer_checks.json`（`passed: true`）。该测试安装器使用独立 AppId 与开始菜单组，不触碰正式安装或个人档案，未随 Release 发布。
+安装器构建脚本修正了签名路径下对 `SignedUninstallerDir` 的错误断言（`SignTool` 模式下卸载器在编译时自动签名，该目录仅用于外部手动签名流程），并移除 `.iss` 中对应的无效指令。已用 `-TestIdentity` 独立身份构建并跑完安装／覆盖升级／卸载三段回归，**4 组全部通过**：每用户安装与 104 个安装文件哈希；安装后 Electron 启动并写入合成 SQLite 与 Chromium 数据；同身份覆盖升级复用安装位置，数据与用户自建文件哈希不变；卸载清除程序、登记与快捷方式，保留个人档案。证据 `release/codex_installer_qa_20261112_021611_095/codex_installer_checks.json`（`passed: true`、`signed: true`，安装后主程序与卸载器签名均已验证）。该测试安装器使用独立 AppId 与开始菜单组，不触碰正式安装或个人档案，未随 Release 发布。
 
 ## 已知限制
 
-- **安装包与便携包均未签名**。SignPath Foundation 申请按此前决定保持暂停，尚未取得发布者证书；文件名中的 `unsigned` 表示未签名，请以 Windows 文件属性的数字签名为准。没有自动更新或云同步。
-- 2026-11-12 复核签名的前置条件：本机 `CurrentUser\My` 与 `LocalMachine\My` 中无带代码签名 EKU 且含私钥的证书，项目与个人目录无 PFX/P12，环境变量与 GitHub Actions 无 SignPath／云签名凭据，`signtool.exe` 亦不在 PATH 或 Windows SDK 安装中，邮箱无 SignPath 获批通知。真实签名必须由受信任的发布者证书或已获批的云签名服务提供，本版无法在本机完成；取得凭据后需重新签名、重算 SHA-256、重跑覆盖回归并替换 Release 资产。
+- **安装器使用 Yves 本机创建的自签名开发证书签名，不是受信任 CA 签发的发布者证书**。证书 `CN=Xiaodongge Windows Dev Code Signing, O=Yves, C=CN`，指纹 `072BB4C71E51A2A2BCA66CFBF3A6F331BCCA4B26`，有效期至 2029-11-12；签名带 DigiCert RFC 3161 时间戳。在已把该证书导入 `CurrentUser\Root` 的本机上，`Get-AuthenticodeSignature` 为 `Valid`；**其他 Windows 机器未导入该根证书时会显示签名无效或未知发布者**，不能据此宣称已获得正式代码签名，也不消除 SmartScreen 提示。
+- **便携 ZIP 仍未签名**。签名范围按政策仅含安装器、内嵌主程序与安装后生成的卸载器。SignPath Foundation 申请按此前决定保持暂停，尚未获批；取得受信任证书后需重新签名、重算 SHA-256、重跑覆盖回归并替换 Release 资产。没有自动更新或云同步。
 - 公众号后台导入 `.md` 后的最终样式、图片上传与微信实际粘贴，需在你的编辑器中确认；桌面版没有系统分享菜单，「分享 MD 文件」只打开导出文件夹。
 - 系统播放封面已在网易云与酷狗实播验收，其他播放器未逐款实测；OCR 语言取决于系统已安装的语言包。Windows 10 与 Android 备份跨端迁移仍需实际设备验收。
 - 构建需要 PowerShell 7；若本机 `pwsh.exe` 不在 PATH，可通过 `CODEX_POWERSHELL` 环境变量指向便携版可执行文件，GitHub 托管构建的默认行为不变。
