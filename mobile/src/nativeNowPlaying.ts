@@ -4,7 +4,7 @@ import { desktopPlugin } from "./codex_desktopBridge";
 export type NowPlayingPlugin = {
   getDiagnostics(): Promise<{ versionName: string; versionCode: number; notificationAccessEnabled: boolean;
     mediaAvailable?: boolean; ocrAvailable?: boolean; ocrLanguages?: string[] }>;
-  getCurrentTrack(): Promise<unknown>;
+  getCurrentTrack(options?: { includeArtwork?: boolean }): Promise<unknown>;
   searchCatalog(options: { title: string; artistName: string; albumName?: string; country: "CN" | "US" }): Promise<unknown>;
   openNotificationSettings(): Promise<void>;
 };

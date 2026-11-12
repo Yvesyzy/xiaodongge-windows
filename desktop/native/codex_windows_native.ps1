@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$Action,
-    [string]$InputPath
+    [string]$InputPath,
+    [switch]$IncludeArtwork
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,6 +10,9 @@ $script:WaitTimeoutMs = 15000
 $script:MaxOcrInputBytes = 12 * 1024 * 1024
 # ponytail: 24,000,000 pixels caps the 4-byte Bgra8 conversion at 96 MB; raise only after repeating memory tests.
 $script:MaxOcrPixels = 24000000
+$script:MaxArtworkInputBytes = 4 * 1024 * 1024
+$script:MaxArtworkPixels = 20000000
+$script:ArtworkTimeoutMs = 4500
 $script:NativeTypes = $null
 
 function Get-WinRtType([string]$TypeName) {
@@ -62,6 +66,7 @@ function Initialize-NativeTypes {
         StorageFile = Get-WinRtType 'Windows.Storage.StorageFile, Windows, ContentType=WindowsRuntime'
         FileAccessMode = Get-WinRtType 'Windows.Storage.FileAccessMode, Windows, ContentType=WindowsRuntime'
         RandomAccessStream = Get-WinRtType 'Windows.Storage.Streams.IRandomAccessStream, Windows, ContentType=WindowsRuntime'
+        ContentStream = Get-WinRtType 'Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows, ContentType=WindowsRuntime'
         BitmapDecoder = Get-WinRtType 'Windows.Graphics.Imaging.BitmapDecoder, Windows, ContentType=WindowsRuntime'
         SoftwareBitmap = Get-WinRtType 'Windows.Graphics.Imaging.SoftwareBitmap, Windows, ContentType=WindowsRuntime'
         BitmapPixelFormat = Get-WinRtType 'Windows.Graphics.Imaging.BitmapPixelFormat, Windows, ContentType=WindowsRuntime'
@@ -71,7 +76,7 @@ function Initialize-NativeTypes {
     return $script:NativeTypes
 }
 
-function Await-WinRt([object]$Operation, [Type]$ResultType) {
+function Await-WinRt([object]$Operation, [Type]$ResultType, [int]$TimeoutMs = $script:WaitTimeoutMs) {
     if ($null -eq $Operation) {
         throw 'WinRT operation was null'
     }
@@ -93,9 +98,9 @@ function Await-WinRt([object]$Operation, [Type]$ResultType) {
     if ($null -eq $task) {
         throw 'WinRT async bridge returned no task'
     }
-    $completed = $task.Wait($script:WaitTimeoutMs)
+    $completed = $task.Wait($TimeoutMs)
     if (-not $completed) {
-        throw "WinRT operation timed out after $($script:WaitTimeoutMs) ms"
+        throw "WinRT operation timed out after $TimeoutMs ms"
     }
     return $task.GetAwaiter().GetResult()
 }
@@ -161,7 +166,69 @@ function Select-PlayingSession([object]$Manager) {
     return $null
 }
 
-function Get-NowPlaying {
+function Get-PlaybackArtwork([object]$MediaProperties, [System.Collections.IDictionary]$Types) {
+    $stream = $null
+    $reader = $null
+    $imageMemory = $null
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $thumbnail = Get-WinRtProperty $MediaProperties 'Thumbnail'
+        if ($null -eq $thumbnail) { return $null }
+        $stream = Await-WinRt ($thumbnail.OpenReadAsync()) $Types.ContentStream $script:ArtworkTimeoutMs
+        $asStream = [System.IO.WindowsRuntimeStreamExtensions].GetMethod('AsStreamForRead', [Type[]]@($Types.RandomAccessStream))
+        $reader = $asStream.Invoke($null, @($stream))
+        $size = $reader.Length
+        if ($size -le 0 -or $size -gt $script:MaxArtworkInputBytes) { return $null }
+        $remaining = $script:ArtworkTimeoutMs - [int]$clock.ElapsedMilliseconds
+        if ($remaining -le 0) { return $null }
+        $createDecoder = $Types.BitmapDecoder.GetMethod('CreateAsync', [Type[]]@($Types.RandomAccessStream))
+        $decoderRequest = $createDecoder.Invoke($null, @($stream))
+        $decoder = Await-WinRt $decoderRequest $Types.BitmapDecoder $remaining
+        $width = [int64](Get-WinRtProperty $decoder 'OrientedPixelWidth')
+        $height = [int64](Get-WinRtProperty $decoder 'OrientedPixelHeight')
+        $frameCount = [int64](Get-WinRtProperty $decoder 'FrameCount')
+        if ($width -le 0 -or $height -le 0 -or $frameCount -le 0 -or
+            $width * $height * $frameCount -gt $script:MaxArtworkPixels) { return $null }
+        $codec = Get-WinRtProperty $decoder 'DecoderInformation'
+        $mimeType = $null
+        foreach ($candidateMime in (Get-WinRtProperty $codec 'MimeTypes')) {
+            if ($candidateMime -in @('image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/bmp')) {
+                $mimeType = $candidateMime
+                break
+            }
+        }
+        if ($null -eq $mimeType) { return $null }
+        $reader.Position = 0
+
+        $imageMemory = New-Object System.IO.MemoryStream
+        $buffer = New-Object byte[] 65536
+        while ($true) {
+            $remaining = $script:ArtworkTimeoutMs - [int]$clock.ElapsedMilliseconds
+            if ($remaining -le 0) { return $null }
+            $read = $reader.ReadAsync($buffer, 0, $buffer.Length)
+            if (-not $read.Wait($remaining)) { return $null }
+            $count = $read.GetAwaiter().GetResult()
+            if ($count -eq 0) { break }
+            if ($imageMemory.Length + $count -gt $script:MaxArtworkInputBytes) { return $null }
+            $imageMemory.Write($buffer, 0, $count)
+        }
+        if ($imageMemory.Length -eq 0 -or $clock.ElapsedMilliseconds -ge $script:ArtworkTimeoutMs) { return $null }
+        # Keep the provider's original bytes, format, dimensions, alpha and encoding.
+        return 'data:' + $mimeType + ';base64,' + [Convert]::ToBase64String($imageMemory.ToArray())
+    } catch {
+        # Optional artwork must never hide a readable track.
+        Write-Verbose (Get-ErrorText $_)
+        Write-Verbose $_.ScriptStackTrace
+        return $null
+    } finally {
+        foreach ($resource in @($imageMemory, $reader, $stream)) {
+            if ($null -ne $resource) { try { $resource.Dispose() } catch { } }
+        }
+        $clock.Stop()
+    }
+}
+
+function Get-NowPlaying([bool]$WithArtwork = $false) {
     $types = Initialize-NativeTypes
     $managerRequest = $types.Manager::RequestAsync()
     $manager = Await-WinRt $managerRequest $types.Manager
@@ -246,6 +313,10 @@ function Get-NowPlaying {
         }
     } catch { }
     $result['musicMetadata'] = $musicMetadata
+    if ($WithArtwork) {
+        $coverDataUrl = Get-PlaybackArtwork $mediaProperties $types
+        if ($null -ne $coverDataUrl) { $result['coverDataUrl'] = $coverDataUrl }
+    }
     return $result
 }
 
@@ -467,7 +538,7 @@ try {
 
     switch ($Action) {
         'nowPlaying' {
-            $output = Get-NowPlaying
+            $output = Get-NowPlaying ([bool]$IncludeArtwork)
             break
         }
         'ocr' {

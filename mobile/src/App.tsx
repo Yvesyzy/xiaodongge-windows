@@ -15,6 +15,7 @@ import { journalRating } from "./codex_yearbookModel";
 import { mergeMusicMetadata } from "./musicMetadata";
 import { groupMusicEntries, normalizeMusicIdentityText, sameAlbumIdentity, sameMusicIdentity } from "./musicIdentity";
 import { NowPlaying, supportsCurrentPlayback } from "./nativeNowPlaying";
+import { playbackCoverKey, preparePlaybackCover } from "./codex_playbackCover";
 import { NativeExport } from "./nativeExport";
 import { desktopPlugin } from "./codex_desktopBridge";
 import { parseSharedMusicPayload, rememberSharedMusic, SharedMusic } from "./nativeSharedMusic";
@@ -459,6 +460,9 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
   const [entryCoverLoaded, setEntryCoverLoaded] = useState(mode === "create");
   const [coverDataUrl, setCoverDataUrl] = useState<string | null>(null);
   const [coverChanged, setCoverChanged] = useState(false);
+  const [coverFromPlayback, setCoverFromPlayback] = useState(false);
+  const playbackCoverKeyRef = useRef<string | null>(null);
+  const coverSelectionRef = useRef(0);
   const [ocrText, setOcrText] = useState("");
   const [recognizedFields, setRecognizedFields] = useState<MusicInfoFields | null>(null);
   const [musicMetadata, setMusicMetadata] = useState<MusicMetadata | null>(null);
@@ -537,6 +541,8 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
       if (!active) return;
       setCoverDataUrl(nextCover);
       setCoverChanged(false);
+      setCoverFromPlayback(false);
+      playbackCoverKeyRef.current = null;
     }).catch((err) => {
       if (active) setError(err instanceof Error ? err.message : "封面读取失败");
     }).finally(() => {
@@ -589,6 +595,8 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
         setGenreSelection(result.draft.genreSelection);
         setSelectedGenreTags(result.draft.selectedGenreTags);
         setCoverChanged(result.draft.coverChanged);
+        setCoverFromPlayback(result.draft.coverFromPlayback === true);
+        playbackCoverKeyRef.current = result.draft.coverFromPlayback ? playbackCoverKey(result.draft.fields) : null;
         if (result.draft.coverChanged) setCoverDataUrl(result.draft.coverDataUrl);
         setOcrText(result.draft.ocrText);
         setRecognizedFields(result.draft.recognizedFields);
@@ -636,7 +644,7 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
       return;
     }
     scheduleDraftSave();
-  }, [coverChanged, coverDataUrl, draftReady, genreSelection, musicMetadata, ocrText, recognizedFields, selectedGenreTags, selectedMoodGroupId, selectedMoods, rating, ratingModifier, multiDimension, ratingProduction, ratingSongwriting, ratingLyrics, ratingComposition, ratingVocals, ratingOriginality, ratingResonance]);
+  }, [coverChanged, coverDataUrl, coverFromPlayback, draftReady, genreSelection, musicMetadata, ocrText, recognizedFields, selectedGenreTags, selectedMoodGroupId, selectedMoods, rating, ratingModifier, multiDimension, ratingProduction, ratingSongwriting, ratingLyrics, ratingComposition, ratingVocals, ratingOriginality, ratingResonance]);
 
   useEffect(() => {
     if (!draftReady) return;
@@ -662,6 +670,8 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
     if (!draftReadyRef.current || !formRef.current) return null;
     const entryId = mode === "edit" ? id ?? null : null;
     if (mode === "edit" && (!entryId || !entry)) return null;
+    const fields = readDraftFields(formRef.current);
+    const coverIsCurrent = !coverFromPlayback || playbackCoverKeyRef.current === playbackCoverKey(fields);
     return {
       version: 2,
       mode,
@@ -670,13 +680,14 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
       draftId,
       baseUpdatedAt: mode === "edit" ? entry?.updatedAt ?? null : null,
       savedAt: new Date().toISOString(),
-      fields: readDraftFields(formRef.current),
+      fields,
       genreSelection,
       selectedGenreTags: [...selectedGenreTags],
       selectedMoodGroupId,
       selectedMoods: [...selectedMoods],
-      coverDataUrl: coverChanged ? coverDataUrl : null,
-      coverChanged,
+      coverDataUrl: coverChanged && coverIsCurrent ? coverDataUrl : null,
+      coverChanged: coverChanged && coverIsCurrent,
+      ...(coverFromPlayback && coverChanged && coverIsCurrent ? { coverFromPlayback: true } : {}),
       ocrText,
       recognizedFields,
       musicMetadata,
@@ -765,6 +776,9 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
     setGenreSelection(defaultGenreSelection(genreTags[0] ?? null));
     setCoverDataUrl(originalCover);
     setCoverChanged(false);
+    setCoverFromPlayback(false);
+    playbackCoverKeyRef.current = null;
+    coverSelectionRef.current += 1;
     setOcrText("");
     setRecognizedFields(null);
     setMusicMetadata(entry?.musicMetadata ?? null);
@@ -784,6 +798,30 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
     setDraftError(false);
   }
 
+  function clearMismatchedPlaybackCover() {
+    if (playbackCoverKeyRef.current === null || !formRef.current) return;
+    if (playbackCoverKeyRef.current === playbackCoverKey(readDraftFields(formRef.current))) return;
+    playbackCoverKeyRef.current = null;
+    setCoverDataUrl(null);
+    setCoverChanged(false);
+    setCoverFromPlayback(false);
+  }
+
+  async function applyPlaybackArtwork(candidate: unknown, isCurrent: () => boolean, selection: number) {
+    if (!formRef.current || (coverDataUrl && !coverFromPlayback && playbackCoverKeyRef.current === null)) return;
+    const identity = readDraftFields(formRef.current);
+    const cover = await preparePlaybackCover(identity, candidate);
+    if (!isCurrent() || selection !== coverSelectionRef.current || !formRef.current
+      || cover.key !== playbackCoverKey(readDraftFields(formRef.current))) return;
+    if (!cover.dataUrl) { clearMismatchedPlaybackCover(); return; }
+    // Covers resolved from storage also belong to the identity used for that lookup.
+    playbackCoverKeyRef.current = cover.key;
+    setCoverDataUrl(cover.dataUrl);
+    setCoverChanged(cover.fromPlayback);
+    setCoverFromPlayback(cover.fromPlayback);
+    if (cover.fromPlayback) setNotice("已读取系统播放封面，保存记录后生效");
+  }
+
   async function readNowPlaying() {
     const requestId = ++nowPlayingRequestRef.current;
     const revision = formRevisionRef.current;
@@ -792,7 +830,8 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
     setNowPlayingMessage("正在读取当前播放…");
     setError("");
     try {
-      const result = parseNowPlayingResult(await NowPlaying.getCurrentTrack());
+      const selection = coverSelectionRef.current;
+      const result = parseNowPlayingResult(await NowPlaying.getCurrentTrack({ includeArtwork: true }));
       if (!isCurrent()) return;
       setNowPlayingAccessEnabled(result.accessEnabled);
       if (!result.accessEnabled) {
@@ -817,6 +856,8 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
       const changed = fillRecognizedFields(formRef.current, firstResult.fields, true);
       setMusicMetadata(firstResult.musicMetadata);
       if (changed) scheduleDraftSave();
+      await applyPlaybackArtwork(result.coverDataUrl, isCurrent, selection);
+      if (!isCurrent()) return;
       const songName = result.fields.songName?.trim();
       const artistName = result.fields.artistName?.trim();
       if (!songName || !artistName) {
@@ -846,6 +887,8 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
         const catalogChanged = fillRecognizedFields(formRef.current, finalResult.fields, true);
         setMusicMetadata(finalResult.musicMetadata);
         if (catalogChanged) scheduleDraftSave();
+        await applyPlaybackArtwork(result.coverDataUrl, isCurrent, selection);
+        if (!isCurrent()) return;
         setNowPlayingMessage(`${recognitionNotice(finalResult.fields)}，联网补全完成`);
       } catch (catalogError) {
         if (isCurrent()) setNowPlayingMessage(`${recognitionNotice(result.fields)}，已保留原生信息；${catalogError instanceof Error ? catalogError.message : "联网补全失败"}，可重试`);
@@ -875,6 +918,7 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
     const input = event.currentTarget;
     const file = input.files?.[0];
     if (!file || input.disabled) return;
+    coverSelectionRef.current += 1;
     input.disabled = true;
     setError("");
     setNotice("");
@@ -883,6 +927,8 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
       if (!input.isConnected) return;
       setCoverDataUrl(dataUrl);
       setCoverChanged(true);
+      setCoverFromPlayback(false);
+      playbackCoverKeyRef.current = null;
       setNotice("封面已选择，保存记录后生效");
     } catch (err) {
       if (input.isConnected) setError(err instanceof Error ? err.message : "封面读取失败");
@@ -931,6 +977,7 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
       : { fields: recognizedFields, musicMetadata };
     const clearMetadata = musicIdentityWouldChange(formRef.current, result.fields);
     const changed = fillRecognizedFields(formRef.current, result.fields);
+    clearMismatchedPlaybackCover();
     if (changed) {
       setMusicMetadata(clearMetadata && !result.musicMetadata?.displayTitle ? null : result.musicMetadata);
       scheduleDraftSave();
@@ -942,6 +989,7 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
   function handleFormMutation(event: FormEvent<HTMLFormElement>) {
     formRevisionRef.current += 1;
     const target = event.target;
+    clearMismatchedPlaybackCover();
     if ((target instanceof HTMLInputElement || target instanceof HTMLSelectElement)
       && ["songName", "artistName", "albumName"].includes(target.name)) {
       setMusicMetadata(null);
@@ -993,7 +1041,8 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
         firstListenedAt: readDate(form, "firstListenedAt"),
         listenedAt: readDate(form, "listenedAt"),
       };
-      const coverTarget = coverChanged && coverDataUrl ? inputToCoverTarget(input) : null;
+      const coverMatches = !coverFromPlayback || playbackCoverKeyRef.current === playbackCoverKey(input);
+      const coverTarget = coverChanged && coverDataUrl && coverMatches ? inputToCoverTarget(input) : null;
       if (coverChanged && coverDataUrl && !coverTarget) throw new Error("请先填写歌曲或专辑，再保存封面");
       const similar = findSimilarEntry(await store.listEntries(), input, mode === "edit" ? id : undefined);
       assertStorageWritable(generation);
@@ -1001,7 +1050,8 @@ function EntryFormPage({ mode }: { mode: "create" | "edit" }) {
         setNotice("已取消保存，现有记录未改变");
         return;
       }
-      if (coverTarget) await store.setCover(coverTarget.kind, coverTarget.target, coverDataUrl as string);
+      if (coverTarget) await store.setCover(coverTarget.kind, coverTarget.target, coverDataUrl as string,
+        coverFromPlayback ? { onlyIfMissing: true } : undefined);
       assertStorageWritable(generation);
       const saved = mode === "create" ? await store.createEntry(input) : await store.updateEntry(id as string, input);
       try {

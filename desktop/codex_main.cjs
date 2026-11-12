@@ -145,13 +145,15 @@ async function shareFiles(options) {
   return { status: 'opened' };
 }
 
-async function native(action, inputPath) {
+async function native(action, inputPath, includeArtwork = false) {
   const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   const args = ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
     path.join(__dirname, 'native', 'codex_windows_native.ps1'), '-Action', action];
   if (inputPath) args.push('-InputPath', inputPath);
+  if (includeArtwork) args.push('-IncludeArtwork');
   try {
-    const result = await runFile(powershell, args, { windowsHide: true, timeout: 20000, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' });
+    const result = await runFile(powershell, args, { windowsHide: true, timeout: 20000,
+      maxBuffer: includeArtwork ? 8 * 1024 * 1024 : 4 * 1024 * 1024, encoding: 'utf8' });
     return JSON.parse(result.stdout.replace(/^\uFEFF/, '').trim());
   } catch (error) {
     if (error.killed) throw new Error('Windows 接口响应超时，请重试');
@@ -202,7 +204,7 @@ const exportsPlugin = {
   copyText: options => { clipboard.writeText(text(options?.text, '复制内容')); },
 };
 const playingPlugin = {
-  getCurrentTrack: async () => enrichWindowsTrack(await native('nowPlaying')),
+  getCurrentTrack: async options => enrichWindowsTrack(await native('nowPlaying', undefined, options?.includeArtwork === true)),
   getDiagnostics: async () => {
     const diagnostics = await native('diagnostics');
     return { versionName: version, versionCode: 1, notificationAccessEnabled: diagnostics.mediaAvailable === true, ...diagnostics };

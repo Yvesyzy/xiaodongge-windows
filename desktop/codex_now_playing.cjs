@@ -8,6 +8,14 @@ const clean = value => typeof value === 'string' && value.length <= 500 ? value.
 const normalized = value => clean(value).normalize('NFKC').toLocaleLowerCase('zh-CN').replace(/\s+/g, '');
 
 async function enrichWindowsTrack(track, localAppData = process.env.LOCALAPPDATA) {
+  // Observed from KuGou's live Super Shy / OMG sessions: this field contains
+  // a book-title-wrapped album description, while Artist contains NewJeans.
+  // Drop that invalid album artist without guessing an album from the description.
+  if (track?.accessEnabled === true && track.musicMetadata?.sourcePackage === 'kugou'
+    && /^《.+》$/u.test(clean(track.musicMetadata.albumArtistName))) {
+    const { albumArtistName, ...musicMetadata } = track.musicMetadata;
+    track = { ...track, musicMetadata };
+  }
   if (track?.accessEnabled !== true || track.musicMetadata?.sourcePackage !== 'cloudmusic.exe'
     || !clean(track.title) || !clean(track.artistName)
     || typeof localAppData !== 'string' || !path.isAbsolute(localAppData)) return track;

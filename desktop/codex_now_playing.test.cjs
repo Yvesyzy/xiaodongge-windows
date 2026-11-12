@@ -12,6 +12,29 @@ const native = { accessEnabled: true, title: '当你环绕我', artistName: '周
   musicMetadata: { sourcePackage: 'cloudmusic.exe', displayTitle: '当你环绕我' } };
 const item = track => ({ resourceType: 'track', track });
 
+test('酷狗已观察到的专辑描述不能冒充专辑歌手，保留实际艺人与封面', async () => {
+  for (const [title, albumArtistName] of [['Super Shy', "《NewJeans 2nd EP 'Get Up'》"], ['OMG', "《NewJeans 'OMG'》"]]) {
+    const source = { accessEnabled: true, title, artistName: 'NewJeans', coverDataUrl: 'cover-preserved',
+      musicMetadata: { sourcePackage: 'kugou', displayTitle: title, albumArtistName } };
+    const result = await enrichWindowsTrack(source, '');
+    assert.equal(result.artistName, 'NewJeans');
+    assert.equal(result.albumName, undefined, '不能将不规范字段猜成专辑标题');
+    assert.equal(result.musicMetadata.albumArtistName, undefined);
+    assert.equal(result.coverDataUrl, source.coverDataUrl);
+    assert.equal(source.musicMetadata.albumArtistName, albumArtistName, '不得修改原始对象');
+  }
+});
+
+test('酷狗正常专辑歌手、其他来源及不可用会话保持原值', async () => {
+  const base = { accessEnabled: true, title: 'OMG', artistName: 'NewJeans',
+    musicMetadata: { sourcePackage: 'kugou', albumArtistName: 'NewJeans' } };
+  assert.equal(await enrichWindowsTrack(base, ''), base);
+  const other = { ...base, musicMetadata: { sourcePackage: 'codex.other.player', albumArtistName: '《其他输入》' } };
+  assert.equal(await enrichWindowsTrack(other, ''), other);
+  const unavailable = { ...base, accessEnabled: false, musicMetadata: { sourcePackage: 'kugou', albumArtistName: '《不可用输入》' } };
+  assert.equal(await enrichWindowsTrack(unavailable, ''), unavailable);
+});
+
 test('Windows 本机播放队列补全及可信边界', async t => {
   const release = path.join(__dirname, '..', 'release');
   await mkdir(release, { recursive: true });
