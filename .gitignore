@@ -2,6 +2,8 @@ node_modules/
 desktop/dist/
 dist/
 release/
+# 本机安装目录可能落在仓库内（Inno 覆盖安装目标）
+xiaodongge-windows/
 tmp/
 *.tsbuildinfo
 *.log

@@ -427,6 +427,8 @@ try {
           return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
         });
         assert.ok(contrast >= 4.5, `editor input contrast ${contrast} ${theme}`);
+        const extrasPosition = await page.locator('.writing-extras > summary').evaluate(element => getComputedStyle(element).position);
+        assert.notEqual(extrasPosition, 'sticky', `writing extras summary must not stick (${theme} ${width}x${height}@${scale})`);
         if (width === 1366 && scale === 1) await page.screenshot({ path: path.join(output, `codex_editor_${theme}.png`), fullPage: true });
       }
     }

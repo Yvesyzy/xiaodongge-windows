@@ -36,6 +36,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
+[InstallDelete]
+; 升级时先清掉旧的应用包，避免残留上一版带哈希名的 js/css 文件（用户数据在 AppData，不在此目录）。
+Type: filesandordirs; Name: "{app}\resources\app"
+
 [Files]
 Source: "{#CODEX_SOURCE}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 

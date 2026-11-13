@@ -151,7 +151,6 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .desktop-route-main .writing-form > .draft-status, .desktop-route-main .writing-form > .entry-save-actions, .desktop-route-main .writing-form > .notice, .desktop-route-main .writing-form > .error { grid-column: 1 / -1; }
 .desktop-route-main .writing-form .note-editor { min-height: 440px; line-height: 1.85; }
 .desktop-route-main .writing-form .writing-extras[open] { display: block; }
-.desktop-route-main .writing-form .writing-extras > summary { position: sticky; top: 0; z-index: 1; background: var(--desktop-panel); }
 .desktop-route-main .writing-form .entry-save-actions { position: sticky; bottom: 14px; z-index: 3; }
 .desktop-route-main .quick-capture-page { max-width: 850px; margin: 0 auto; }
 .desktop-route-main .codex-reader { max-width: 850px; margin: 0 auto; }
