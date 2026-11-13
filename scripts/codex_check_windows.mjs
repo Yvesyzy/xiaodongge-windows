@@ -479,6 +479,17 @@ try {
   for (const dimension of ["制作", "词", "曲", "人声", "原创性", "共鸣"]) {
     assert.ok(publication.markdown.some(line => line.includes(`${dimension}：`)), `publication must always export the ${dimension} dimension`);
   }
+  const metaOrder = ["专辑", "艺术家", "歌曲"]
+    .map((label) => publication.markdown.findIndex((line) => line.startsWith(`${label}：`)))
+    .filter((index) => index >= 0);
+  assert.ok(metaOrder.length >= 2, `publication must keep the basic info block: ${JSON.stringify(publication.markdown.slice(0, 12))}`);
+  assert.deepEqual(metaOrder, [...metaOrder].sort((left, right) => left - right), "basic info must order album, artist, then song");
+  const blankBefore = (prefix) => {
+    const index = publication.markdown.findIndex((line) => line.startsWith(prefix));
+    return index >= 2 && publication.markdown[index - 1].trim() === "" && publication.markdown[index - 2].trim() === "";
+  };
+  assert.ok(blankBefore("评分："), "the rating block must be separated from basic info by two blank lines");
+  assert.ok(blankBefore("专辑/歌曲发行时间："), "the date block must be separated from ratings by two blank lines");
   checks.push('publication exports six fixed rating dimensions, drops the cover pipeline and repeats no title');
   if (process.argv[2]) {
     await navigate('/new');
