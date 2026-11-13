@@ -18,6 +18,7 @@ let application;
 let page;
 const checks = [];
 const layouts = [];
+const evidenceFallbacks = [];
 const tables = ['ReviewEntry', 'ListeningMoment', 'YearlySummary', 'MonthlySummary', 'CoverImage', 'AppData', 'UndoBackup'];
 
 async function launch({ executable = executablePath, offline = false } = {}) {
@@ -51,6 +52,16 @@ async function snapshot() {
     return { data, drafts: Object.fromEntries(Object.keys(localStorage).filter(key => key.startsWith('music-feelings-entry-draft:v1:'))
       .sort().map(key => [key, localStorage.getItem(key)])) };
   }, tables);
+}
+
+async function captureFullPage(file) {
+  // 整页证据截图可能因渲染未稳定而超时；超时退回窗口截图，不让证据收集挡住功能断言。
+  try {
+    await page.screenshot({ path: path.join(output, file), fullPage: true, timeout: 30000 });
+  } catch (error) {
+    await captureWindow(file);
+    evidenceFallbacks.push(`${file}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+  }
 }
 
 async function captureWindow(file) {
@@ -99,7 +110,7 @@ try {
     const preferences = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
     return preferences.contextIsolation && preferences.sandbox && !preferences.nodeIntegration;
   }), true);
-  await page.screenshot({ path: path.join(output, 'codex_home_empty.png'), fullPage: true });
+  await captureFullPage('codex_home_empty.png');
   checks.push('real Electron, native SQLite startup, custom platform, renderer sandbox and empty state');
 
   const coverDataUrl = await page.evaluate(demoCover);
@@ -429,7 +440,7 @@ try {
         assert.ok(contrast >= 4.5, `editor input contrast ${contrast} ${theme}`);
         const extrasPosition = await page.locator('.writing-extras > summary').evaluate(element => getComputedStyle(element).position);
         assert.notEqual(extrasPosition, 'sticky', `writing extras summary must not stick (${theme} ${width}x${height}@${scale})`);
-        if (width === 1366 && scale === 1) await page.screenshot({ path: path.join(output, `codex_editor_${theme}.png`), fullPage: true });
+        if (width === 1366 && scale === 1) await captureFullPage(`codex_editor_${theme}.png`);
       }
     }
   }
@@ -439,10 +450,36 @@ try {
   });
   await navigate('/new');
   await page.locator('textarea[name="content"]').waitFor();
-  await page.screenshot({ path: path.join(output, 'codex_editor.png'), fullPage: true });
+  await captureFullPage('codex_editor.png');
   await navigate('/');
   await page.locator('.desktop-home-record').first().waitFor();
-  await page.screenshot({ path: path.join(output, 'codex_home_populated.png'), fullPage: true });
+  await captureFullPage('codex_home_populated.png');
+  await navigate('/publication');
+  const sourcePicker = page.locator('.codex-publication-source-list label input[type="checkbox"]').first();
+  await sourcePicker.waitFor();
+  await sourcePicker.check();
+  await page.getByRole('button', { name: '生成公众号稿', exact: true }).click();
+  await page.locator('.codex-publication-preview').waitFor();
+  await page.locator('.codex-publication-markdown textarea').waitFor({ state: 'attached' });
+  const publication = await page.evaluate(() => {
+    const lines = (document.querySelector('.codex-publication-markdown textarea')?.value ?? "").split("\n");
+    return {
+      markdown: lines,
+      previewHeadings: Array.from(document.querySelectorAll('.codex-publication-preview h2')).map(node => node.textContent.trim()),
+      composerText: document.querySelector('.codex-publication')?.innerText ?? "",
+    };
+  });
+  const h1 = (publication.markdown.find(line => line.startsWith("# ")) ?? "").slice(2).trim();
+  const sectionHeadings = publication.markdown.filter(line => line.startsWith("## ")).map(line => line.slice(3).trim());
+  assert.ok(h1.length > 0, "publication markdown needs an H1 title");
+  assert.ok(!sectionHeadings.includes(h1), `single-review publication must not repeat the title as a section heading: ${JSON.stringify({ h1, sectionHeadings })}`);
+  assert.ok(!publication.previewHeadings.includes(h1), "preview must match the exported heading rule");
+  assert.ok(!publication.composerText.includes("配图位置") && !publication.composerText.includes("附上这一节"), "publication must not keep the cover pipeline");
+  assert.ok(!publication.markdown.some(line => line.includes("旧版词曲")), "legacy songwriting rating must not be exported");
+  for (const dimension of ["制作", "词", "曲", "人声", "原创性", "共鸣"]) {
+    assert.ok(publication.markdown.some(line => line.includes(`${dimension}：`)), `publication must always export the ${dimension} dimension`);
+  }
+  checks.push('publication exports six fixed rating dimensions, drops the cover pipeline and repeats no title');
   if (process.argv[2]) {
     await navigate('/new');
     await page.locator('input[name="title"]').fill('codex 便携包搬移草稿');
@@ -468,7 +505,7 @@ try {
     assert.equal(offlineBackup.entries.length, 4);
     assert.equal(offlineBackup.covers.length, 1);
     assert.ok(offlineBackup.monthlySummaries.length > 0);
-    await page.screenshot({ path: path.join(output, 'codex_packaged_offline_backup.png'), fullPage: true });
+    await captureFullPage('codex_packaged_offline_backup.png');
     checks.push('packaged executable folder move preserves archive, covers, reports, undo and raw draft; blocked HTTP/HTTPS cold reload and offline save/export pass');
   }
   // 合并导入：只含一条新记录的备份，勾选合并后应保留本机全部记录并新增该条。
@@ -489,7 +526,7 @@ try {
   checks.push('merge import keeps all local entries and adds the incoming one');
 
   assert.deepEqual(errors, []);
-  const result = { status: 'passed', profile, output, checks, layouts, versions: await application.evaluate(() => process.versions) };
+  const result = { status: 'passed', profile, output, checks, layouts, evidenceFallbacks, versions: await application.evaluate(() => process.versions) };
   await writeFile(path.join(output, 'codex_windows_checks.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
 } catch (error) {
